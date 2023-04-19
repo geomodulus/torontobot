@@ -8,6 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"text/template"
 
 	"golang.org/x/text/language"
@@ -15,7 +18,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/chzyer/readline"
+	"github.com/bwmarrin/discordgo"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/sashabaranov/go-openai"
 )
@@ -26,6 +29,9 @@ const (
 	// RespTemp is the response temperature we want from the model. Default temp is 1.0 and higher
 	// is more "creative".
 	RespTemp = 0.5
+
+	// Torontoverse Discord server ID
+	GuildID = "1023614976772030605"
 )
 
 type Response struct {
@@ -36,10 +42,10 @@ type Response struct {
 
 func main() {
 	dbFile := flag.String("db-file", "./db/toronto.db", "Database file for tabular city data")
+	discordBotToken := flag.String("discord-bot-token", "", "Token for accessing Discord API")
 	openaiToken := flag.String("openai-token", "", "Token for accessing OpenAI API")
-	flag.Parse()
 
-	p := message.NewPrinter(language.English)
+	flag.Parse()
 
 	// Read and parse the template file
 	prompt, err := template.ParseFiles("prompt.txt")
@@ -56,95 +62,163 @@ func main() {
 	}
 	defer db.Close()
 
-	// Init AI agent here
-	rl, err := readline.New(">> ")
+	ds, err := discordgo.New("Bot " + *discordBotToken)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error creating Discord session: %v", err)
 	}
-	// loop to read commands and print output
-	for {
-		command, err := rl.Readline()
 
-		var query bytes.Buffer
-		if err != nil {
-			break
-		}
-		data := struct {
-			Command string
-		}{
-			Command: command,
-		}
-		if err := prompt.Execute(&query, data); err != nil {
-			log.Fatal("Error executing template:", err)
-		}
-		fmt.Println("% sending request to openai...")
-		aiResp, err := ai.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
-			Messages: []openai.ChatCompletionMessage{{
-				Role:    openai.ChatMessageRoleUser,
-				Content: query.String(),
-			}},
-			Temperature: RespTemp,
-		})
-		if err != nil {
-			log.Fatalf("CreateChatCompletion: %v", err)
-		}
+	bot := &TorontoBot{
+		prompt: prompt,
+		ai:     ai,
+		db:     db,
+	}
 
-		var resp Response
-		if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
-			log.Fatalf("Error unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
+	ds.AddHandler(bot.slashCommandHandler)
+
+	if err = ds.Open(); err != nil {
+		log.Fatalf("Error opening Discord connection: %v", err)
+	}
+
+	cmd, err := ds.ApplicationCommandCreate(ds.State.User.ID, GuildID, &discordgo.ApplicationCommand{
+		Name:        "torontobot",
+		Description: "Responds to questions about city of Toronto Open Data.",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "question",
+				Description: "Question about Toronto open data",
+				Required:    true,
+			},
+		},
+	})
+	if err != nil {
+		log.Fatalf("Cannot create Discord command: %v", err)
+	}
+	defer func() {
+		if err := ds.ApplicationCommandDelete(ds.State.User.ID, GuildID, cmd.ID); err != nil {
+			log.Fatalf("Cannot delete Discord command: %v", err)
 		}
-		fmt.Printf("Torontobot: %s\n\n%s\n\nExecuting query %q\n", resp.Schema, resp.Applicability, resp.SQL)
+	}()
 
-		rows, err := db.Query(resp.SQL)
-		if err != nil {
-			log.Fatalf("Query: %v", err)
-		}
-		defer rows.Close()
+	fmt.Println("TorontoBot is now live on Discord. Press CTRL-C to exit.")
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	<-sc
 
-		columnNames, _ := rows.Columns()
-		columnCount := len(columnNames)
-		columnTypes, err := rows.ColumnTypes()
-		if err != nil {
-			log.Printf("Error getting column types: %v\n", err)
-			continue
-		}
+	ds.Close()
+}
 
-		// Create a table writer and set column headers
-		tw := table.NewWriter()
-		header := make(table.Row, columnCount)
-		for i, columnName := range columnNames {
-			header[i] = fmt.Sprintf("%s (%s)", columnName, columnTypes[i].DatabaseTypeName())
-		}
-		tw.AppendHeader(header)
+type TorontoBot struct {
+	prompt *template.Template
+	ai     *openai.Client
+	db     *sql.DB
+}
 
-		for rows.Next() {
-			columns := make([]interface{}, columnCount)
-			columnPointers := make([]interface{}, columnCount)
+func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type != discordgo.InteractionApplicationCommand {
+		return
+	}
 
-			for i := range columns {
-				columnPointers[i] = &columns[i]
+	for _, option := range i.ApplicationCommandData().Options {
+		if option.Name == "question" {
+			if err := ds.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			}); err != nil {
+				fmt.Println("Error sending deferred response:", err)
+				return
 			}
 
-			if err := rows.Scan(columnPointers...); err != nil {
-				log.Printf("Error scanning row: %v\n", err)
+			p := message.NewPrinter(language.English)
+
+			var query bytes.Buffer
+			data := struct {
+				Command string
+			}{
+				Command: option.StringValue(),
+			}
+			if err := b.prompt.Execute(&query, data); err != nil {
+				log.Fatal("Error executing template:", err)
+			}
+			log.Printf("sending request to openai: %q\n", query.String())
+			aiResp, err := b.ai.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
+				Model: openai.GPT3Dot5Turbo,
+				Messages: []openai.ChatCompletionMessage{{
+					Role:    openai.ChatMessageRoleUser,
+					Content: query.String(),
+				}},
+				Temperature: RespTemp,
+			})
+			if err != nil {
+				log.Fatalf("CreateChatCompletion: %v", err)
+			}
+			log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
+
+			var resp Response
+			if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
+				log.Fatalf("Error unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
+			}
+			out := fmt.Sprintf("Question: *%s*\n\n%s\n\n%s\n\nExecuted query %q\n", option.StringValue(), resp.Schema, resp.Applicability, resp.SQL)
+
+			rows, err := b.db.Query(resp.SQL)
+			if err != nil {
+				log.Fatalf("Query: %v", err)
+			}
+			defer rows.Close()
+
+			log.Println("Got SQL response")
+
+			columnNames, _ := rows.Columns()
+			columnCount := len(columnNames)
+			columnTypes, err := rows.ColumnTypes()
+			if err != nil {
+				log.Printf("Error getting column types: %v\n", err)
 				continue
 			}
 
-			row := make(table.Row, columnCount)
-			for i, column := range columns {
-				if columnTypes[i].DatabaseTypeName() == "REAL" || columnTypes[i].DatabaseTypeName() == "" {
-					row[i] = p.Sprintf("$%.2f", column)
+			// Create a table writer and set column headers
+			tw := table.NewWriter()
+			header := make(table.Row, columnCount)
+			for i, columnName := range columnNames {
+				header[i] = fmt.Sprintf("%s (%s)", columnName, columnTypes[i].DatabaseTypeName())
+			}
+			tw.AppendHeader(header)
+
+			for rows.Next() {
+				columns := make([]interface{}, columnCount)
+				columnPointers := make([]interface{}, columnCount)
+
+				for i := range columns {
+					columnPointers[i] = &columns[i]
+				}
+
+				if err := rows.Scan(columnPointers...); err != nil {
+					log.Printf("Error scanning row: %v\n", err)
 					continue
 				}
-				row[i] = p.Sprintf("%+v", column)
-			}
-			tw.AppendRow(row)
-		}
-		rows.Close()
 
-		fmt.Println("\nQuery result:")
-		fmt.Println(tw.Render())
-		fmt.Println()
+				row := make(table.Row, columnCount)
+				for i, column := range columns {
+					if columnTypes[i].DatabaseTypeName() == "REAL" || columnTypes[i].DatabaseTypeName() == "" {
+						row[i] = p.Sprintf("$%.2f", column)
+						continue
+					}
+					row[i] = p.Sprintf("%+v", column)
+				}
+				tw.AppendRow(row)
+			}
+			rows.Close()
+
+			out += fmt.Sprintf("\nQuery result:\n```%s```\n", tw.Render())
+
+			// Edit the original deferred response with the actual content
+			_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &out,
+			})
+			if err != nil {
+				log.Println("Error editing follow-up message:", err)
+			}
+
+		}
 	}
+
 }

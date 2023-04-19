@@ -3,15 +3,18 @@ module github.com/geomodulus/torontobot
 go 1.18
 
 require (
+	github.com/bwmarrin/discordgo v0.27.1
 	github.com/chzyer/readline v1.5.1
 	github.com/golang-migrate/migrate/v4 v4.15.2
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/mattn/go-sqlite3 v1.14.10
 	github.com/sashabaranov/go-openai v1.9.0
 	github.com/xuri/excelize/v2 v2.7.1
+	golang.org/x/text v0.9.0
 )
 
 require (
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
@@ -25,5 +28,4 @@ require (
 	golang.org/x/crypto v0.8.0 // indirect
 	golang.org/x/net v0.9.0 // indirect
 	golang.org/x/sys v0.7.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
 )

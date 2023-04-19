@@ -1,7 +1,6 @@
 # TorontoBot
 
-TorontoBot is a tool for querying Toronto Open Data. One day soon it will be a discord bot. Today,
-it just outputs reponses to the command line.
+TorontoBot is a tool for querying Toronto Open Data. It's a Discord bot right now.
 
 ## Dependencies
 
@@ -36,12 +35,12 @@ This will take a few minutes as it's loading 20,000+ budget line items into your
 
 Start the bot like so:
 ```
- $~/code/torontobot> go run . --openai-token <your-openai-token-here>
+ $~/code/torontobot> go run . --openai-token <your-openai-token-here> --discord-bot-token <bot-token>
 ```
 
 Now you can do something like this:
 ```
->> What are the 8 most expensive programs?
+>> /torontobot What are the 8 most expensive programs?
 % sending request to openai...
 Torontobot: The operating_budget table has columns for id, program, service, activity, entry_type, category, subcategory, item, year, and amount. We will be using the program and amount columns.
 
