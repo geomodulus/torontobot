@@ -66,6 +66,14 @@ func main() {
 			log.Fatalf("Error creating Discord session: %v", err)
 		}
 		ds.AddHandler(bot.slashCommandHandler)
+		ds.AddHandler(func(s *discordgo.Session, _ *discordgo.Ready) {
+			err := s.UpdateStatusComplex(discordgo.UpdateStatusData{
+				Status: "online",
+			})
+			if err != nil {
+				log.Println("Error updating bot status:", err)
+			}
+		})
 		if err = ds.Open(); err != nil {
 			log.Fatalf("Error opening Discord connection: %v", err)
 		}
@@ -187,7 +195,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 
 			resultsTable, err := b.ExecuteQuery(sqlAnalysis.SQL)
 			if err != nil {
-				errMsg := fmt.Sprintf("Error analyzing SQL query: %v", err)
+				errMsg := fmt.Sprintf("Error executing SQL query: %v", err)
 				_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
 					Content: &errMsg,
 				})
@@ -197,7 +205,12 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			results := fmt.Sprintf("\nQuery result:\n```%s```\n", resultsTable)
+			msg := resultsTable
+			if len(resultsTable) > 1900 {
+				msg = resultsTable[:1900] + "..."
+			}
+
+			results := fmt.Sprintf("\nQuery result:\n```%s```\n", msg)
 			// Edit the original deferred response with the actual content
 			_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
 				Content: &results,
@@ -205,7 +218,6 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 			if err != nil {
 				log.Println("Error editing follow-up message:", err)
 			}
-
 		}
 	}
 
@@ -225,7 +237,7 @@ func (b *TorontoBot) SQLAnalysis(question string) (*SQLResponse, error) {
 		Command: question,
 	}
 	if err := b.prompt.Execute(&query, data); err != nil {
-		return nil, fmt.Errorf("Error executing template: %+v", err)
+		return nil, fmt.Errorf("executing template: %+v", err)
 	}
 	log.Printf("sending request to openai: %q\n", query.String())
 	aiResp, err := b.ai.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
@@ -243,7 +255,7 @@ func (b *TorontoBot) SQLAnalysis(question string) (*SQLResponse, error) {
 
 	var resp SQLResponse
 	if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
-		return nil, fmt.Errorf("Error unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
+		return nil, fmt.Errorf("unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
 	}
 	return &resp, nil
 }
@@ -255,7 +267,7 @@ func (b *TorontoBot) ExecuteQuery(query string) (string, error) {
 
 	rows, err := b.db.Query(query)
 	if err != nil {
-		return "", fmt.Errorf("Query: %v", err)
+		return "", fmt.Errorf("query: %v", err)
 	}
 	defer rows.Close()
 
@@ -265,7 +277,7 @@ func (b *TorontoBot) ExecuteQuery(query string) (string, error) {
 	columnCount := len(columnNames)
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
-		return "", fmt.Errorf("Error getting column types: %v\n", err)
+		return "", fmt.Errorf("getting column types: %v", err)
 	}
 
 	// Create a table writer and set column headers
@@ -285,7 +297,7 @@ func (b *TorontoBot) ExecuteQuery(query string) (string, error) {
 		}
 
 		if err := rows.Scan(columnPointers...); err != nil {
-			return "", fmt.Errorf("Error scanning row: %v\n", err)
+			return "", fmt.Errorf("error scanning row: %v", err)
 		}
 
 		row := make(table.Row, columnCount)
