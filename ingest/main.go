@@ -56,7 +56,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 
 		// Parse the amount, removing commas and parentheses for negative numbers
 		amountStr := strings.ReplaceAll(row[7], ",", "")
-		amountStr = strings.ReplaceAll(amountStr, "(", "-")
+		amountStr = strings.ReplaceAll(amountStr, "(", "")
 		amountStr = strings.ReplaceAll(amountStr, ")", "")
 		amount, err := strconv.ParseFloat(amountStr, 64)
 		if err != nil {
@@ -67,6 +67,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		switch strings.ToLower(row[3]) {
 		case "revenues":
 			entryType = "revenue"
+			amount = amount * -1 // For our purposes revenue is positive, it's negative in the data.
 		case "expenses":
 			entryType = "expense"
 		}
