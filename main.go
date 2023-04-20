@@ -157,7 +157,29 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 			if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
 				log.Fatalf("Error unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
 			}
+
 			out := fmt.Sprintf("Question: *%s*\n\n%s\n\n%s\n\nExecuted query %q\n", option.StringValue(), resp.Schema, resp.Applicability, resp.SQL)
+			// Edit the original deferred response with the actual content
+			_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &out,
+			})
+			if err != nil {
+				log.Println("Error editing initial response:", err)
+			}
+
+			_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &out,
+			})
+			if err != nil {
+				log.Println("Error editing initial response:", err)
+			}
+			followupMessage, err := ds.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+				Content: "Querying database...",
+			})
+			if err != nil {
+				fmt.Println("Error sending follow-up message:", err)
+				return
+			}
 
 			rows, err := b.db.Query(resp.SQL)
 			if err != nil {
@@ -208,11 +230,10 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 			}
 			rows.Close()
 
-			out += fmt.Sprintf("\nQuery result:\n```%s```\n", tw.Render())
-
+			results := fmt.Sprintf("\nQuery result:\n```%s```\n", tw.Render())
 			// Edit the original deferred response with the actual content
-			_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: &out,
+			_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
+				Content: &results,
 			})
 			if err != nil {
 				log.Println("Error editing follow-up message:", err)
