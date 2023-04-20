@@ -3,6 +3,15 @@
 TorontoBot is a tool for querying Toronto Open Data. It answers questions either on the command line
 or as a Discord bot.
 
+## Usage
+
+Join [our Discord](https://discord.gg/E5f6vsNc). In the "Open Data" channel, using a slash command:
+
+    /torontobot <your-query-here>
+
+This bot is brand new, so go easy on it if it doesn't get things right. It can answer questions
+about the operating budget surprisingly well!
+
 ## Dependencies
 
 This project requires the Go programming language and sqlite3 installed on your local system. Both
