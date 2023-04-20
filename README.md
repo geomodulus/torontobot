@@ -1,21 +1,21 @@
 # TorontoBot
 
-TorontoBot is a tool for querying Toronto Open Data. It's a Discord bot right now.
+TorontoBot is a tool for querying Toronto Open Data. It answers questions either on the command line
+or as a Discord bot.
 
 ## Dependencies
 
 This project requires the Go programming language and sqlite3 installed on your local system. Both
 very easy to install.
 
-
 ## Ingest
 
 First thing to do is initialize the database. We're building our proof-of-concept with a single
-file: the 2023 City of Toronto approved operating budget. 
+file: the 2023 City of Toronto approved operating budget.
 
-> We chose this file because it's one big flat table that's amenable to a lot of difference queries.
+We chose this file because it's one big flat table that's amenable to a lot of difference queries.
 
-First, you'll need to intialize a database. Do it like this:
+First, you'll need to intialize a fresh, empty database. Do it like this:
 ```
  $~/code/torontobot/db> go run migrate.go
 ```
@@ -24,7 +24,7 @@ Next, you'll need to download the 2023 budget data file in (sigh) XLSX format fr
 [here](https://open.toronto.ca/dataset/budget-operating-budget-program-summary-by-expenditure-category/)
 and save it somewhere. 
 
-Then, run the following command:
+Then, run the following ingest command:
 ```
  $~/code/torontobot/ingest> go run . --data-file <path-to-your-data-file>
 ```

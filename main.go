@@ -8,9 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"text/template"
 
 	"golang.org/x/text/language"
@@ -19,6 +16,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/chzyer/readline"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/sashabaranov/go-openai"
 )
@@ -33,12 +31,6 @@ const (
 	// Torontoverse Discord server ID
 	GuildID = "1023614976772030605"
 )
-
-type Response struct {
-	Schema        string
-	Applicability string
-	SQL           string
-}
 
 func main() {
 	dbFile := flag.String("db-file", "./db/toronto.db", "Database file for tabular city data")
@@ -62,50 +54,75 @@ func main() {
 	}
 	defer db.Close()
 
-	ds, err := discordgo.New("Bot " + *discordBotToken)
-	if err != nil {
-		log.Fatalf("Error creating Discord session: %v", err)
-	}
-
 	bot := &TorontoBot{
 		prompt: prompt,
 		ai:     ai,
 		db:     db,
 	}
 
-	ds.AddHandler(bot.slashCommandHandler)
-
-	if err = ds.Open(); err != nil {
-		log.Fatalf("Error opening Discord connection: %v", err)
-	}
-
-	cmd, err := ds.ApplicationCommandCreate(ds.State.User.ID, GuildID, &discordgo.ApplicationCommand{
-		Name:        "torontobot",
-		Description: "Responds to questions about city of Toronto Open Data.",
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "question",
-				Description: "Question about Toronto open data",
-				Required:    true,
-			},
-		},
-	})
-	if err != nil {
-		log.Fatalf("Cannot create Discord command: %v", err)
-	}
-	defer func() {
-		if err := ds.ApplicationCommandDelete(ds.State.User.ID, GuildID, cmd.ID); err != nil {
-			log.Fatalf("Cannot delete Discord command: %v", err)
+	if *discordBotToken != "" {
+		ds, err := discordgo.New("Bot " + *discordBotToken)
+		if err != nil {
+			log.Fatalf("Error creating Discord session: %v", err)
 		}
-	}()
+		ds.AddHandler(bot.slashCommandHandler)
+		if err = ds.Open(); err != nil {
+			log.Fatalf("Error opening Discord connection: %v", err)
+		}
+		defer ds.Close()
+		cmd, err := ds.ApplicationCommandCreate(ds.State.User.ID, GuildID, &discordgo.ApplicationCommand{
+			Name:        "torontobot",
+			Description: "Responds to questions about city of Toronto Open Data.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "question",
+					Description: "Question about Toronto open data",
+					Required:    true,
+				},
+			},
+		})
+		if err != nil {
+			log.Fatalf("Cannot create Discord command: %v", err)
+		}
+		defer func() {
+			if err := ds.ApplicationCommandDelete(ds.State.User.ID, GuildID, cmd.ID); err != nil {
+				log.Fatalf("Cannot delete Discord command: %v", err)
+			}
+		}()
+		fmt.Println("TorontoBot is now live on Discord. Press CTRL-C to exit.")
+	}
 
-	fmt.Println("TorontoBot is now live on Discord. Press CTRL-C to exit.")
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	<-sc
+	rl, err := readline.New(">> ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// loop to read commands and print output
+	for {
+		question, err := rl.Readline()
+		if err != nil {
+			break
+		}
+		sqlAnalysis, err := bot.SQLAnalysis(question)
+		if err != nil {
+			fmt.Println("Error analyzing SQL query:", err)
+			continue
+		}
 
-	ds.Close()
+		fmt.Printf(
+			"%s\n\n%s\n\nSQL: %q\n",
+			sqlAnalysis.Schema,
+			sqlAnalysis.Applicability,
+			sqlAnalysis.SQL)
+
+		resultsTable, err := bot.ExecuteQuery(sqlAnalysis.SQL)
+		if err != nil {
+			fmt.Println("Error executing SQL query:", err)
+			continue
+		}
+
+		fmt.Printf("\nQuery result:\n```%s```\n", resultsTable)
+	}
 }
 
 type TorontoBot struct {
@@ -128,37 +145,24 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			p := message.NewPrinter(language.English)
-
-			var query bytes.Buffer
-			data := struct {
-				Command string
-			}{
-				Command: option.StringValue(),
-			}
-			if err := b.prompt.Execute(&query, data); err != nil {
-				log.Fatal("Error executing template:", err)
-			}
-			log.Printf("sending request to openai: %q\n", query.String())
-			aiResp, err := b.ai.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-				Model: openai.GPT3Dot5Turbo,
-				Messages: []openai.ChatCompletionMessage{{
-					Role:    openai.ChatMessageRoleUser,
-					Content: query.String(),
-				}},
-				Temperature: RespTemp,
-			})
+			sqlAnalysis, err := b.SQLAnalysis(option.StringValue())
 			if err != nil {
-				log.Fatalf("CreateChatCompletion: %v", err)
+				errMsg := fmt.Sprintf("Error analyzing SQL query: %v", err)
+				_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+					Content: &errMsg,
+				})
+				if err != nil {
+					log.Println("Error editing initial response:", err)
+				}
+				return
 			}
-			log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
 
-			var resp Response
-			if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
-				log.Fatalf("Error unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
-			}
-
-			out := fmt.Sprintf("Question: *%s*\n\n%s\n\n%s\n\nExecuted query %q\n", option.StringValue(), resp.Schema, resp.Applicability, resp.SQL)
+			out := fmt.Sprintf(
+				"Question: *%s*\n\n%s\n\n%s\n\nExecuting query %q\n",
+				option.StringValue(),
+				sqlAnalysis.Schema,
+				sqlAnalysis.Applicability,
+				sqlAnalysis.SQL)
 			// Edit the original deferred response with the actual content
 			_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Content: &out,
@@ -181,56 +185,19 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			rows, err := b.db.Query(resp.SQL)
+			resultsTable, err := b.ExecuteQuery(sqlAnalysis.SQL)
 			if err != nil {
-				log.Fatalf("Query: %v", err)
-			}
-			defer rows.Close()
-
-			log.Println("Got SQL response")
-
-			columnNames, _ := rows.Columns()
-			columnCount := len(columnNames)
-			columnTypes, err := rows.ColumnTypes()
-			if err != nil {
-				log.Printf("Error getting column types: %v\n", err)
-				continue
-			}
-
-			// Create a table writer and set column headers
-			tw := table.NewWriter()
-			header := make(table.Row, columnCount)
-			for i, columnName := range columnNames {
-				header[i] = fmt.Sprintf("%s (%s)", columnName, columnTypes[i].DatabaseTypeName())
-			}
-			tw.AppendHeader(header)
-
-			for rows.Next() {
-				columns := make([]interface{}, columnCount)
-				columnPointers := make([]interface{}, columnCount)
-
-				for i := range columns {
-					columnPointers[i] = &columns[i]
+				errMsg := fmt.Sprintf("Error analyzing SQL query: %v", err)
+				_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
+					Content: &errMsg,
+				})
+				if err != nil {
+					log.Println("Error editing initial response:", err)
 				}
-
-				if err := rows.Scan(columnPointers...); err != nil {
-					log.Printf("Error scanning row: %v\n", err)
-					continue
-				}
-
-				row := make(table.Row, columnCount)
-				for i, column := range columns {
-					if columnTypes[i].DatabaseTypeName() == "REAL" || columnTypes[i].DatabaseTypeName() == "" {
-						row[i] = p.Sprintf("$%.2f", column)
-						continue
-					}
-					row[i] = p.Sprintf("%+v", column)
-				}
-				tw.AppendRow(row)
+				return
 			}
-			rows.Close()
 
-			results := fmt.Sprintf("\nQuery result:\n```%s```\n", tw.Render())
+			results := fmt.Sprintf("\nQuery result:\n```%s```\n", resultsTable)
 			// Edit the original deferred response with the actual content
 			_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
 				Content: &results,
@@ -242,4 +209,96 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 		}
 	}
 
+}
+
+type SQLResponse struct {
+	Schema        string
+	Applicability string
+	SQL           string
+}
+
+func (b *TorontoBot) SQLAnalysis(question string) (*SQLResponse, error) {
+	var query bytes.Buffer
+	data := struct {
+		Command string
+	}{
+		Command: question,
+	}
+	if err := b.prompt.Execute(&query, data); err != nil {
+		return nil, fmt.Errorf("Error executing template: %+v", err)
+	}
+	log.Printf("sending request to openai: %q\n", query.String())
+	aiResp, err := b.ai.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
+		Model: openai.GPT3Dot5Turbo,
+		Messages: []openai.ChatCompletionMessage{{
+			Role:    openai.ChatMessageRoleUser,
+			Content: query.String(),
+		}},
+		Temperature: RespTemp,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateChatCompletion: %v", err)
+	}
+	log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
+
+	var resp SQLResponse
+	if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
+		return nil, fmt.Errorf("Error unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
+	}
+	return &resp, nil
+}
+
+// ExecuteQuery takes an SQL query and executes it against the database, then returns a nicely
+// formatted ascii table with the results.
+func (b *TorontoBot) ExecuteQuery(query string) (string, error) {
+	p := message.NewPrinter(language.English)
+
+	rows, err := b.db.Query(query)
+	if err != nil {
+		return "", fmt.Errorf("Query: %v", err)
+	}
+	defer rows.Close()
+
+	log.Println("Got SQL response")
+
+	columnNames, _ := rows.Columns()
+	columnCount := len(columnNames)
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return "", fmt.Errorf("Error getting column types: %v\n", err)
+	}
+
+	// Create a table writer and set column headers
+	tw := table.NewWriter()
+	header := make(table.Row, columnCount)
+	for i, columnName := range columnNames {
+		header[i] = fmt.Sprintf("%s (%s)", columnName, columnTypes[i].DatabaseTypeName())
+	}
+	tw.AppendHeader(header)
+
+	for rows.Next() {
+		columns := make([]interface{}, columnCount)
+		columnPointers := make([]interface{}, columnCount)
+
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			return "", fmt.Errorf("Error scanning row: %v\n", err)
+		}
+
+		row := make(table.Row, columnCount)
+		for i, column := range columns {
+			if columnTypes[i].DatabaseTypeName() == "REAL" || columnTypes[i].DatabaseTypeName() == "" {
+				row[i] = p.Sprintf("$%.2f", column)
+				continue
+			}
+			row[i] = p.Sprintf("%+v", column)
+		}
+		tw.AppendRow(row)
+	}
+	rows.Close()
+
+	return tw.Render(), nil
 }
