@@ -5,7 +5,7 @@ or as a Discord bot.
 
 ## Usage
 
-Join [our Discord](https://discord.gg/E5f6vsNc). In the "Open Data" channel, using a slash command:
+Join [our Discord](https://discord.gg/sQzxHBq8Q2). In the "Open Data" channel, using a slash command:
 
     /torontobot <your-query-here>
 
@@ -81,4 +81,4 @@ we've simply retooled it to better fit the Torontoverse/Geomodulus ecosystem.
 
 ## Support
 
-Join [our Discord](https://discord.gg/E5f6vsNc).
+Join [our Discord](https://discord.gg/sQzxHBq8Q2).
