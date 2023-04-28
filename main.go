@@ -19,10 +19,9 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"google.golang.org/grpc"
 
-	"github.com/geomodulus/corpus/graph"
+	"github.com/geomodulus/citygraph"
 	"github.com/geomodulus/torontobot/db/reader"
 	"github.com/geomodulus/torontobot/viz"
-	"github.com/geomodulus/witness/citygraph"
 )
 
 const (
@@ -48,14 +47,14 @@ func main() {
 
 	ctx := context.Background()
 
-	var store *graph.Store
+	var store *citygraph.Store
 	if *citygraphAddr != "" {
 		graphConn, err := grpc.Dial(*citygraphAddr, grpc.WithInsecure())
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer graphConn.Close()
-		store = &graph.Store{GraphClient: citygraph.NewClient(graphConn)}
+		store = &citygraph.Store{GraphClient: citygraph.NewClient(graphConn)}
 	}
 
 	sqlGenPrompt, err := template.ParseFiles("./prompts/sql_gen.txt")
@@ -206,7 +205,7 @@ type TorontoBot struct {
 	hostname          string
 	sqlGenPrompt      *template.Template
 	chartSelectPrompt *template.Template
-	graphStore        *graph.Store
+	graphStore        *citygraph.Store
 	ai                *openai.Client
 	db                *sql.DB
 }
@@ -485,7 +484,7 @@ func (b *TorontoBot) SaveToGraph(ctx context.Context, chartSelected *ChartSelect
 			"pitch":   0,
 			"bearing": -30,
 		}}
-	mod := &graph.Module{
+	mod := &citygraph.Module{
 		ID:          citygraph.NewID().String(),
 		Name:        chartSelected.Title,
 		Headline:    fmt.Sprintf("<h1>Toronto Budget 2023: %s</h1>", chartSelected.Title),
