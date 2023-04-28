@@ -4,30 +4,26 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"strings"
 	"text/template"
 	"time"
-
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/chzyer/readline"
-	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/sashabaranov/go-openai"
+	"google.golang.org/grpc"
 
-	"github.com/chromedp/cdproto/emulation"
-	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
+	"github.com/geomodulus/corpus/graph"
+	"github.com/geomodulus/torontobot/db/reader"
+	"github.com/geomodulus/torontobot/viz"
+	"github.com/geomodulus/witness/citygraph"
 )
 
 const (
@@ -42,13 +38,26 @@ const (
 )
 
 func main() {
+	// For dev use: "127.0.0.1:27615"
+	citygraphAddr := flag.String("citygraph-addr", "", "address string for citygraph indradb GRPC server")
 	dbFile := flag.String("db-file", "./db/toronto.db", "Database file for tabular city data")
 	discordBotToken := flag.String("discord-bot-token", "", "Token for accessing Discord API")
 	openaiToken := flag.String("openai-token", "", "Token for accessing OpenAI API")
+	hostname := flag.String("host", "https://torontoverse.com", "host and scheme for torontoverse server")
 
 	flag.Parse()
 
 	ctx := context.Background()
+
+	var store *graph.Store
+	if *citygraphAddr != "" {
+		graphConn, err := grpc.Dial(*citygraphAddr, grpc.WithInsecure())
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer graphConn.Close()
+		store = &graph.Store{GraphClient: citygraph.NewClient(graphConn)}
+	}
 
 	sqlGenPrompt, err := template.ParseFiles("./prompts/sql_gen.txt")
 	if err != nil {
@@ -71,8 +80,10 @@ func main() {
 	defer db.Close()
 
 	bot := &TorontoBot{
+		hostname:          *hostname,
 		sqlGenPrompt:      sqlGenPrompt,
 		chartSelectPrompt: chartSelectPrompt,
+		graphStore:        store,
 		ai:                ai,
 		db:                db,
 	}
@@ -128,6 +139,9 @@ func main() {
 		if err != nil {
 			break
 		}
+		if strings.TrimSpace(question) == "" {
+			continue
+		}
 		sqlAnalysis, err := bot.SQLAnalysis(ctx, question)
 		if err != nil {
 			fmt.Println("Error analyzing SQL query:", err)
@@ -140,7 +154,7 @@ func main() {
 			sqlAnalysis.Applicability,
 			sqlAnalysis.SQL)
 
-		resultsTable, err := bot.ExecuteQuery(sqlAnalysis.SQL)
+		resultsTable, err := reader.ReadDataTable(bot.db, sqlAnalysis.SQL)
 		if err != nil {
 			fmt.Println("Error executing SQL query:", err)
 			continue
@@ -155,36 +169,45 @@ func main() {
 		}
 		switch strings.ToLower(chartSelected.Chart) {
 		case "bar chart":
-			pngBytes, err := bot.GenerateBarChartPNG(
-				ctx,
-				chartSelected.Title,
-				chartSelected.Data,
-				chartSelected.ValueIsCurrency)
-			if err != nil {
-				fmt.Println("Error generating PNG:", err)
-				continue
-			}
-			if err = ioutil.WriteFile("../mainapp/static/dev-chart.png", pngBytes, 0644); err != nil {
-				fmt.Println("Error writing file:", err)
-				continue
-			}
+			//	fmt.Println("Generating bar chart...")
+			//	pngBytes, err := bot.GenerateBarChartPNG(
+			//		ctx,
+			//		chartSelected.Title,
+			//		chartSelected.Data,
+			//		chartSelected.ValueIsCurrency)
+			//	if err != nil {
+			//		fmt.Println("Error generating PNG:", err)
+			//		continue
+			//	}
+			//		if err = ioutil.WriteFile("../mainapp/static/dev-chart.png", pngBytes, 0644); err != nil {
+			//			fmt.Println("Error writing file:", err)
+			//			continue
+			//		}
 
-			fmt.Println("Wrote file: https://waterloo:8100/dev-chart.png")
-
-		default:
-			fmt.Printf("Ah you need a %s, but I can't make those yet. Soon 😈", chartSelected.Chart)
+			if store != nil {
+				modPath, err := bot.SaveToGraph(ctx, chartSelected, "Local User")
+				if err != nil {
+					fmt.Println("Error saving chart to graph:", err)
+					continue
+				}
+				fmt.Printf("Published chart at %s\n", bot.hostname+modPath)
+			}
 
 			//case "line chart":
 			//case "pie chart":
 			//case "scatter plot":
-		}
 
+		default:
+			fmt.Printf("Ah you need a %s, but I can't make those yet. Soon 😈\n", chartSelected.Chart)
+		}
 	}
 }
 
 type TorontoBot struct {
+	hostname          string
 	sqlGenPrompt      *template.Template
 	chartSelectPrompt *template.Template
+	graphStore        *graph.Store
 	ai                *openai.Client
 	db                *sql.DB
 }
@@ -244,7 +267,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			resultsTable, err := b.ExecuteQuery(sqlAnalysis.SQL)
+			resultsTable, err := reader.ReadDataTable(b.db, sqlAnalysis.SQL)
 			if err != nil {
 				errMsg := fmt.Sprintf("Error executing SQL query: %v", err)
 				_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
@@ -270,7 +293,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				log.Println("Error editing follow-up message:", err)
 			}
 
-			// Send the graph!
+			// Send the chart!
 			followupMessage, err = ds.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 				Content: "Visualizing data...",
 			})
@@ -307,6 +330,31 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				if err != nil {
 					fmt.Println("Error editing follow-up message:", err)
 					continue
+				}
+				if b.graphStore != nil {
+					// Send the chart!
+					followupMessage, err = ds.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+						Content: fmt.Sprintf("Publishing to %s...", b.hostname),
+					})
+					if err != nil {
+						fmt.Println("Error sending follow-up message:", err)
+						return
+					}
+
+					modPath, err := b.SaveToGraph(ctx, chartSelected, i.Member.User.Username)
+					if err != nil {
+						fmt.Println("Error saving to graph:", err)
+						continue
+					}
+
+					out := fmt.Sprintf("Published chart at %s\n", b.hostname+modPath)
+					_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
+						Content: &out,
+					})
+					if err != nil {
+						fmt.Println("Error editing follow-up message:", err)
+						continue
+					}
 				}
 
 			default:
@@ -364,70 +412,10 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 	return &resp, nil
 }
 
-// ExecuteQuery takes an SQL query and executes it against the database, then returns a nicely
-// formatted ascii table with the results.
-func (b *TorontoBot) ExecuteQuery(query string) (string, error) {
-	p := message.NewPrinter(language.English)
-
-	rows, err := b.db.Query(query)
-	if err != nil {
-		return "", fmt.Errorf("query: %v", err)
-	}
-	defer rows.Close()
-
-	log.Println("Got SQL response")
-
-	columnNames, _ := rows.Columns()
-	columnCount := len(columnNames)
-	columnTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return "", fmt.Errorf("getting column types: %v", err)
-	}
-
-	// Create a table writer and set column headers
-	tw := table.NewWriter()
-	header := make(table.Row, columnCount)
-	for i, columnName := range columnNames {
-		header[i] = fmt.Sprintf("%s (%s)", columnName, columnTypes[i].DatabaseTypeName())
-	}
-	tw.AppendHeader(header)
-
-	for rows.Next() {
-		columns := make([]interface{}, columnCount)
-		columnPointers := make([]interface{}, columnCount)
-
-		for i := range columns {
-			columnPointers[i] = &columns[i]
-		}
-
-		if err := rows.Scan(columnPointers...); err != nil {
-			return "", fmt.Errorf("error scanning row: %v", err)
-		}
-
-		row := make(table.Row, columnCount)
-		for i, column := range columns {
-			if columnTypes[i].DatabaseTypeName() == "REAL" || columnTypes[i].DatabaseTypeName() == "" {
-				row[i] = p.Sprintf("$%.2f", column)
-				continue
-			}
-			row[i] = p.Sprintf("%+v", column)
-		}
-		tw.AppendRow(row)
-	}
-	rows.Close()
-
-	return tw.Render(), nil
-}
-
-type DataEntry struct {
-	Name  string
-	Value float64
-}
-
 type ChartSelectResponse struct {
 	Chart           string
 	Title           string
-	Data            []*DataEntry
+	Data            []*viz.DataEntry
 	ValueIsCurrency bool
 }
 
@@ -477,105 +465,80 @@ func (b *TorontoBot) SelectChart(ctx context.Context, question, dataTable string
 	return &resp, nil
 }
 
-const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>SVG Export</title>
-
-	<link href="https://torontoverse.com/css/style.css?v=7" rel="stylesheet" />
-
-    <!-- fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap"
-      rel="stylesheet"
-    />
-	<script src="https://torontoverse.com/js/lib/d3/d3.min.js"></script>
-</head>
-<body class="bg-map-50 font-mono">
-    <script type="text/javascript">
-    // Add your D3.js visualization code here
-	  REPLACE_ME_WITH_CHART_JS
-    </script>
-</body>
-</html>
-`
-
-func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, title string, data []*DataEntry, isCurrency bool) ([]byte, error) {
-	input := struct {
-		Title      string
-		Data       []*DataEntry
-		IsCurrency bool
-	}{
-		Title:      title,
-		Data:       data,
-		IsCurrency: isCurrency,
-	}
-	inputJSON, err := json.Marshal(input)
+func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, title string, data []*viz.DataEntry, isCurrency bool) ([]byte, error) {
+	chartHTML, err := viz.GenerateBarChartHTML(title, data, isCurrency)
 	if err != nil {
-		return []byte{}, fmt.Errorf("marshalling data: %v", err)
+		return []byte{}, fmt.Errorf("generating bar chart: %v", err)
 	}
-	jsIntro := fmt.Sprintf("const input = %s;\n", string(inputJSON))
-	jsFile, err := os.ReadFile("viz/bar_chart.js")
-	if err != nil {
-		return []byte{}, fmt.Errorf("reading js file: %v", err)
-	}
-	chartHTML := strings.Replace(htmlContent, "REPLACE_ME_WITH_CHART_JS", jsIntro+string(jsFile), 1)
-	err = ioutil.WriteFile("../mainapp/static/dev-chart.html", []byte(chartHTML), 0644)
-	if err != nil {
-		return []byte{}, fmt.Errorf("writing file: %v", err)
-	}
-	fmt.Println("Wrote file: https://waterloo:8100/dev-chart.html")
-
-	ctx, cancel := chromedp.NewContext(ctx)
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 75*time.Second)
-	defer cancel()
-
-	var buf []byte
-	if err := chromedp.Run(ctx, saveSVGAsPNG(chartHTML, &buf)); err != nil {
-		return []byte{}, fmt.Errorf("running chromedp: %v", err)
-	}
-	return buf, nil
+	//	filename := "../mainapp/static/dev-chart.html"
+	//	if err := ioutil.WriteFile(filename, []byte(chartHTML), 0644); err != nil {
+	//		return []byte{}, fmt.Errorf("writing chart.html: %v", err)
+	//	}
+	//	fmt.Println("Wrote", filename)
+	return viz.SVGToPNG(ctx, chartHTML)
 }
 
-func saveSVGAsPNG(htmlContent string, buf *[]byte) chromedp.Tasks {
-	dataURL := "data:text/html;charset=utf-8;base64," + base64.StdEncoding.EncodeToString([]byte(htmlContent))
-
-	return chromedp.Tasks{
-		chromedp.Navigate(dataURL),
-		chromedp.WaitVisible(`svg`, chromedp.ByQuery),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			// Set the viewport to match the SVG size
-			err := emulation.SetDeviceMetricsOverride(675, 750, 1, false).
-				WithScreenOrientation(&emulation.ScreenOrientation{
-					Type:  emulation.OrientationTypePortraitPrimary,
-					Angle: 0,
-				}).
-				Do(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Capture the screenshot as PNG
-			*buf, err = page.CaptureScreenshot().
-				WithQuality(90).
-				WithClip(&page.Viewport{
-					X:      0,
-					Y:      0,
-					Width:  675,
-					Height: 750,
-					Scale:  1,
-				}).
-				Do(ctx)
-			if err != nil {
-				return err
-			}
-			return nil
-		}),
+func (b *TorontoBot) SaveToGraph(ctx context.Context, chartSelected *ChartSelectResponse, user string) (string, error) {
+	camera := map[string]interface{}{
+		"": map[string]interface{}{
+			"center":  map[string]float64{"lng": -79.384, "lat": 43.645},
+			"zoom":    13.8,
+			"pitch":   0,
+			"bearing": -30,
+		}}
+	mod := &graph.Module{
+		ID:          citygraph.NewID().String(),
+		Name:        chartSelected.Title,
+		Headline:    fmt.Sprintf("<h1>Toronto Budget 2023: %s</h1>", chartSelected.Title),
+		Categories:  []string{"Open Data"},
+		Creators:    []string{user},
+		Camera:      camera,
+		Description: "User-generated open data visualization",
+		PubDate:     time.Now().Format("2006-01-02"),
+		CodeCredit:  "TorontoBot, an open data bot",
 	}
+	if err := b.graphStore.WriteModule(ctx, mod); err != nil {
+		return "", fmt.Errorf("writing module: %v", err)
+	}
+
+	q, err := mod.VertexQuery()
+	if err != nil {
+		return "", fmt.Errorf("generating vertex query: %v", err)
+	}
+	body := `
+				<figure>
+				  <div id="torontobot-chart"></div>
+				  <figcaption>Data from: Operating Budget Program Summary by Expenditure Category, 2023
+				    Source: <a href="https://open.toronto.ca/dataset/budget-operating-budget-program-summary-by-expenditure-category/" target="_blank">
+				    City of Toronto Open Data</a>
+				  </figcaption>
+				</figure>
+				<p>This chart was generated using an experimental AI-powered open data query tool called 
+				<a href="https://github.com/geomodulus/torontobot" target="_blank">TorontoBot</a>.</p>
+				<p>Want to generate your own or help contribute to the project?
+				<a href="https://discord.gg/sQzxHBq8Q2" target="_blank">Join our Discord</a>.</p>
+				<ins class="geomodcau"></ins>`
+	if err := b.graphStore.WriteBodyText(ctx, q, body); err != nil {
+		return "", fmt.Errorf("writing body text: %v", err)
+	}
+
+	js, err := viz.GenerateBarChartJS(
+		"#torontobot-chart",
+		chartSelected.Title,
+		chartSelected.Data,
+		chartSelected.ValueIsCurrency,
+		viz.WithBreakpointWidth())
+	if err != nil {
+		return "", fmt.Errorf("generating JS: %v", err)
+	}
+	js += "\n\nmodule.initAdUnits();"
+	if err := b.graphStore.WriteJS(ctx, q, js); err != nil {
+		return "", fmt.Errorf("writing JS: %v", err)
+	}
+
+	slugID, err := mod.SlugID()
+	if err != nil {
+		return "", fmt.Errorf("generating slug ID: %v", err)
+	}
+	return fmt.Sprintf("/mod/%s/%s", slugID, mod.SlugTitle()), nil
 }

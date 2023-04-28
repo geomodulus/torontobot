@@ -1,4 +1,5 @@
 //const input = {
+//  Selector: "body",
 //  Data: [
 //    { Name: "apartment", Value: 7797 },
 //    { Name: "road", Value: 6176 },
@@ -19,23 +20,26 @@
 //}
 //  entryName = "Location",
 //  entryValueName = "Thefts",
+// baseWidth is setDynamically.
 
 const baseHeight = 750,
   titleSize = "1.6em",
-  baseWidth = 675,
   yLabelSize = "1.1em",
-  margin = { top: 40, right: 220, bottom: 0, left: 0 },
+  margin = { top: 50, right: 220, bottom: 0, left: 0 },
   colors = [
     "#D32360",
     "#ED3242",
     "#E2871F",
-    "#FFD515",
+    "#FDA400",
     "#00A168",
     "#00B1C1",
     "#108DF6",
     "#7035E6",
   ],
-  dollarFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  dollarFormatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 
 const width = baseWidth - margin.left - margin.right;
 const height = baseHeight - margin.top - margin.bottom;
@@ -56,7 +60,7 @@ const y = d3
     .tickSize(0);
 
 const svg = d3
-  .select("body")
+  .select(input.Selector)
   .append("svg")
   .attr("width", baseWidth)
   .attr("height", baseHeight);
@@ -65,15 +69,33 @@ const chart = svg
   .append("g")
   .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-chart
+const title = chart
   .append("text")
-  .attr("x", (baseWidth / 2))
-  .attr("y", ((-1 * margin.top) / 2) + 2)
+  .attr("x", baseWidth / 2)
+  .attr("y", (-1 * margin.top) / 2 + 2)
   .attr("text-anchor", "middle")
-  .attr("fill", "#0E0E14")
+  .attr("fill", "currentColor")
   .style("font-weight", "bold")
-  .style("text-decoration", "Underline")
-  .text(input.Title);
+  .style("text-decoration", "Underline");
+if (input.Title.length > 50) {
+  const parts = splitAtWordBoundary(input.Title, 50);
+  title
+    .append("tspan")
+    .attr("x", baseWidth / 2)
+    .attr("dy", "-0.3em")
+    .text(function (d) {
+      return parts[0];
+    });
+  title
+    .append("tspan")
+    .attr("x", baseWidth / 2)
+    .attr("dy", "1.2em")
+    .text(function (d) {
+      return parts[1];
+    });
+} else {
+  title.text(input.Title);
+}
 
 const bars = chart.selectAll(".bar").data(input.Data).enter();
 
@@ -93,7 +115,6 @@ bars
   .attr("dy", ".35em")
   .attr("text-anchor", "end")
   .attr("fill", "currentColor")
-  .style("font-weight", "bold")
   .text((d) => {
     if (input.IsCurrency) {
       return dollarFormatter.format(d.Value);
@@ -109,12 +130,38 @@ bars
   .attr("x", 3)
   .attr("dy", ".35em")
   .attr("text-anchor", "start")
-  .attr("fill", "#0E0E14")
- // .attr("fill", (d, i) =>
- //   [0, 1].includes(i % colors.length) ? "#FFD515" : "#E33266"
- // )
+  .attr("fill", "currentColor")
   .style("font-weight", "bold")
-  .style("paint-order", "stroke")
-  .style("stroke-width", "0.025em")
-  .style("stroke", "#F0F2FA")
-  .text((d) => d.Name);
+  .each(function(d) {
+    if (d.Name.length > 30) {
+      const [firstPart, secondPart] = splitAtWordBoundary(d.Name, 28);
+
+      d3.select(this)
+        .append("tspan")
+        .attr("dy", "-0.2em")
+        .text(firstPart);
+
+      if (secondPart) {
+        d3.select(this)
+          .append("tspan")
+          .attr("x", 3)
+          .attr("dy", "1.3em")
+          .text(secondPart);
+      }
+    } else {
+      d3.select(this).text(d.Name);
+    }
+  });
+
+
+function splitAtWordBoundary(str, limit) {
+  if (str.length <= limit) {
+    return [str, ''];
+  }
+
+  const regex = new RegExp(`^.{0,${limit}}\\b`);
+  const firstPart = str.match(regex)[0];
+  const secondPart = str.slice(firstPart.length);
+
+  return [firstPart, secondPart];
+}
