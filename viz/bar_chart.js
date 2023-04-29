@@ -25,12 +25,12 @@
 const baseHeight = 750,
   titleSize = "1.6em",
   yLabelSize = "1.1em",
-  margin = { top: 50, right: 220, bottom: 0, left: 0 },
+  margin = { top: 50, right: 210, bottom: 0, left: 0 },
   colors = [
     "#D32360",
     "#ED3242",
     "#E2871F",
-    "#FDA400",
+    "#FFD515",
     "#00A168",
     "#00B1C1",
     "#108DF6",
@@ -46,7 +46,7 @@ const height = baseHeight - margin.top - margin.bottom;
 
 const y = d3
     .scaleBand()
-    .domain(input.Data.map((d) => d.Name))
+    .domain(input.Data.map((d) => dataLabel(d)))
     .range([0, height])
     .padding(0.1),
   yAxis = d3.axisLeft(y).tickSize(0),
@@ -77,8 +77,8 @@ const title = chart
   .attr("fill", "currentColor")
   .style("font-weight", "bold")
   .style("text-decoration", "Underline");
-if (input.Title.length > 50) {
-  const parts = splitAtWordBoundary(input.Title, 50);
+if (input.Title.length > 42) {
+  const parts = splitAtWordBoundary(input.Title, 40);
   title
     .append("tspan")
     .attr("x", baseWidth / 2)
@@ -101,7 +101,7 @@ const bars = chart.selectAll(".bar").data(input.Data).enter();
 
 bars
   .append("rect")
-  .attr("y", (d) => y(d.Name))
+  .attr("y", (d) => y(dataLabel(d)))
   .attr("height", y.bandwidth())
   .attr("x", 0)
   .attr("width", (d) => x(d.Value))
@@ -110,7 +110,7 @@ bars
 // Add actual value at end of each bar
 bars
   .append("text")
-  .attr("y", (d) => y(d.Name) + y.bandwidth() / 2)
+  .attr("y", (d) => y(dataLabel(d)) + y.bandwidth() / 2)
   .attr("x", (d) => baseWidth - 5)
   .attr("dy", ".35em")
   .attr("text-anchor", "end")
@@ -126,15 +126,15 @@ bars
 // Add y-axis labels over the bars
 bars
   .append("text")
-  .attr("y", (d) => y(d.Name) + y.bandwidth() / 2)
+  .attr("y", (d) => y(dataLabel(d)) + y.bandwidth() / 2)
   .attr("x", 3)
   .attr("dy", ".35em")
   .attr("text-anchor", "start")
   .attr("fill", "currentColor")
   .style("font-weight", "bold")
   .each(function(d) {
-    if (d.Name.length > 30) {
-      const [firstPart, secondPart] = splitAtWordBoundary(d.Name, 28);
+    if (dataLabel(d).length > 30) {
+      const [firstPart, secondPart] = splitAtWordBoundary(dataLabel(d), 28);
 
       d3.select(this)
         .append("tspan")
@@ -149,7 +149,7 @@ bars
           .text(secondPart);
       }
     } else {
-      d3.select(this).text(d.Name);
+      d3.select(this).text(dataLabel(d));
     }
   });
 
@@ -164,4 +164,9 @@ function splitAtWordBoundary(str, limit) {
   const secondPart = str.slice(firstPart.length);
 
   return [firstPart, secondPart];
+}
+
+function dataLabel(d) {
+  if (d.Date) return d.Date;
+  return d.Name;
 }

@@ -183,7 +183,22 @@ func main() {
 			//		}
 
 			if store != nil {
-				modPath, err := bot.SaveToGraph(ctx, chartSelected, "Local User")
+				js, err := viz.GenerateBarChartJS(
+					"#torontobot-chart",
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithBreakpointWidth())
+				if err != nil {
+					fmt.Println("Error generating JS:", err)
+					continue
+				}
+				modPath, err := bot.SaveToGraph(
+					ctx,
+					chartSelected.Title,
+					renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+					js,
+					"Local User")
 				if err != nil {
 					fmt.Println("Error saving chart to graph:", err)
 					continue
@@ -191,7 +206,30 @@ func main() {
 				fmt.Printf("Published chart at %s\n", bot.hostname+modPath)
 			}
 
-			//case "line chart":
+		case "line chart":
+			if store != nil {
+				js, err := viz.GenerateLineChartJS(
+					"#torontobot-chart",
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithBreakpointWidth())
+				if err != nil {
+					fmt.Println("Error generating JS:", err)
+					continue
+				}
+				modPath, err := bot.SaveToGraph(
+					ctx,
+					chartSelected.Title,
+					renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+					js,
+					"Local User")
+				if err != nil {
+					fmt.Println("Error saving chart to graph:", err)
+					continue
+				}
+				fmt.Printf("Published chart at %s\n", bot.hostname+modPath)
+			}
 			//case "pie chart":
 			//case "scatter plot":
 
@@ -224,8 +262,9 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				fmt.Println("Error sending deferred response:", err)
 				return
 			}
+			question := option.StringValue()
 
-			sqlAnalysis, err := b.SQLAnalysis(ctx, option.StringValue())
+			sqlAnalysis, err := b.SQLAnalysis(ctx, question)
 			if err != nil {
 				errMsg := fmt.Sprintf("Error analyzing SQL query: %v", err)
 				_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
@@ -239,7 +278,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 
 			out := fmt.Sprintf(
 				"Question: *%s*\n\n%s\n\n%s\n\nExecuting query %q\n",
-				option.StringValue(),
+				question,
 				sqlAnalysis.Schema,
 				sqlAnalysis.Applicability,
 				sqlAnalysis.SQL)
@@ -300,7 +339,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			chartSelected, err := b.SelectChart(ctx, option.StringValue(), resultsTable)
+			chartSelected, err := b.SelectChart(ctx, question, resultsTable)
 			if err != nil {
 				fmt.Println("Error selecting chart:", err)
 				continue
@@ -339,7 +378,22 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 						return
 					}
 
-					modPath, err := b.SaveToGraph(ctx, chartSelected, i.Member.User.Username)
+					js, err := viz.GenerateBarChartJS(
+						"#torontobot-chart",
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						viz.WithBreakpointWidth())
+					if err != nil {
+						fmt.Println("Error generating JS:", err)
+						continue
+					}
+					modPath, err := b.SaveToGraph(
+						ctx,
+						chartSelected.Title,
+						renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+						js,
+						i.Member.User.Username)
 					if err != nil {
 						fmt.Println("Error saving to graph:", err)
 						continue
@@ -476,7 +530,36 @@ func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, title string, data
 	return viz.SVGToPNG(ctx, chartHTML)
 }
 
-func (b *TorontoBot) SaveToGraph(ctx context.Context, chartSelected *ChartSelectResponse, user string) (string, error) {
+func renderBody(question, schemaThoughts, analysis, sqlQuery string) string {
+	return `
+				<figure>
+				  <div id="torontobot-chart"></div>
+				  <figcaption>Data from: Operating Budget Program Summary by Expenditure Category, 2014 - 2023
+				    Source: <a href="https://open.toronto.ca/dataset/budget-operating-budget-program-summary-by-expenditure-category/" target="_blank">
+				    City of Toronto Open Data</a>
+				  </figcaption>
+				</figure>
+				<p>This chart was generated using an experimental AI-powered open data query tool called 
+				<a href="https://github.com/geomodulus/torontobot" target="_blank">TorontoBot</a>.</p>
+				<p>Want to generate your own or help contribute to the project?
+				<a href="https://discord.gg/sQzxHBq8Q2" target="_blank">Join our Discord</a>.</p>
+				<ins class="geomodcau"></ins>
+				<h3>How does it work?</h3>
+				<p>First, the bot uses GPT-3 to analyze the question and generate a SQL query.</p>
+				<p>Then, the bot uses a custom SQL query engine to query a database we've filled
+				with data from the City of Toronto Open Data portal.</p>
+				<p>Finally, the bot uses a custom charting engine to generate a chart from the results.</p>
+				<h3>What does the bot think?</h3>
+				<h5 class="font-bold">Question</h5>
+				<p>` + question + `</p>
+				<h5 class="font-bold">AI thought process</h5>
+				<p><em>` + schemaThoughts + `</em></p>
+				<p><em>` + analysis + `</em></p>
+				<h5 class="font-bold">SQL Query</h5>
+				<p class="p-2 bg-map-800 text-map-200"><code>` + sqlQuery + `</code></p>`
+}
+
+func (b *TorontoBot) SaveToGraph(ctx context.Context, title, body, js, user string) (string, error) {
 	camera := map[string]interface{}{
 		"": map[string]interface{}{
 			"center":  map[string]float64{"lng": -79.384, "lat": 43.645},
@@ -486,8 +569,8 @@ func (b *TorontoBot) SaveToGraph(ctx context.Context, chartSelected *ChartSelect
 		}}
 	mod := &citygraph.Module{
 		ID:          citygraph.NewID().String(),
-		Name:        chartSelected.Title,
-		Headline:    fmt.Sprintf("<h1>Toronto Budget 2023: %s</h1>", chartSelected.Title),
+		Name:        title,
+		Headline:    fmt.Sprintf("<h1>City Budget: %s</h1>", title),
 		Categories:  []string{"Open Data"},
 		Creators:    []string{user},
 		Camera:      camera,
@@ -503,32 +586,10 @@ func (b *TorontoBot) SaveToGraph(ctx context.Context, chartSelected *ChartSelect
 	if err != nil {
 		return "", fmt.Errorf("generating vertex query: %v", err)
 	}
-	body := `
-				<figure>
-				  <div id="torontobot-chart"></div>
-				  <figcaption>Data from: Operating Budget Program Summary by Expenditure Category, 2023
-				    Source: <a href="https://open.toronto.ca/dataset/budget-operating-budget-program-summary-by-expenditure-category/" target="_blank">
-				    City of Toronto Open Data</a>
-				  </figcaption>
-				</figure>
-				<p>This chart was generated using an experimental AI-powered open data query tool called 
-				<a href="https://github.com/geomodulus/torontobot" target="_blank">TorontoBot</a>.</p>
-				<p>Want to generate your own or help contribute to the project?
-				<a href="https://discord.gg/sQzxHBq8Q2" target="_blank">Join our Discord</a>.</p>
-				<ins class="geomodcau"></ins>`
 	if err := b.graphStore.WriteBodyText(ctx, q, body); err != nil {
 		return "", fmt.Errorf("writing body text: %v", err)
 	}
 
-	js, err := viz.GenerateBarChartJS(
-		"#torontobot-chart",
-		chartSelected.Title,
-		chartSelected.Data,
-		chartSelected.ValueIsCurrency,
-		viz.WithBreakpointWidth())
-	if err != nil {
-		return "", fmt.Errorf("generating JS: %v", err)
-	}
 	js += "\n\nmodule.initAdUnits();"
 	if err := b.graphStore.WriteJS(ctx, q, js); err != nil {
 		return "", fmt.Errorf("writing JS: %v", err)

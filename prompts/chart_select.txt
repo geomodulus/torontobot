@@ -6,7 +6,10 @@ Given the following options for a data visualization: bar chart, line chart, sca
 
 {{.Data}}
 
-Please suggest a title for the chart based on the question and results. Finally, please convert the data into a json array with the keys Name and Value whwhere Value is always a number.
+Please suggest a title for the chart based on the question and results. Finally, please convert the
+data into a json array with the keys Name, Date and Value. Value is always a number. Either Name or
+Date is present, not both. Date is used when the data is time series data. Name is used when the data
+is not time series data.
 
 Please respond only in JSON format. Do not return any reasoning in your response.
 
@@ -16,6 +19,17 @@ Example response:
   "Title": <suggested chart title>",
   "Data": [{
     "Name": "<item name>",
+   "Value": <item-number>
+  }],
+  "ValueIsCurrency": <true/false>
+}
+
+Example response:
+{
+  "Chart": "<chosen option>",
+  "Title": <suggested chart title>",
+  "Data": [{
+    "Date": 2014,
    "Value": <item-number>
   }],
   "ValueIsCurrency": <true/false>

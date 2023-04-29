@@ -24,27 +24,26 @@ file: the 2023 City of Toronto approved operating budget.
 
 We chose this file because it's one big flat table that's amenable to a lot of difference queries.
 
-First, you'll need to intialize a fresh, empty database. Do it like this:
+First, you'll need to intialize a fresh, empty database. Do it like this (in the `db` dir):
 ```
  $~/code/torontobot/db> go run migrate.go
 ```
 
-Next, you'll need to download the 2023 budget data file in (sigh) XLSX format from 
-[here](https://open.toronto.ca/dataset/budget-operating-budget-program-summary-by-expenditure-category/)
-and save it somewhere. 
+That will create `toronto.db`, a sqlite3 database we'll use to store our data.
 
 Then, run the following ingest command:
 ```
- $~/code/torontobot/ingest> go run . --data-file <path-to-your-data-file>
+ $~/code/torontobot/ingest> go run .
 ```
 
-This will take a few minutes as it's loading 20,000+ budget line items into your local database.
+Over the course of the next several minutes, this script will download City of Toronto operating
+budget data for the years 2014 through 2023.
 
 ## Usage
 
 Start the bot like so:
 ```
- $~/code/torontobot> go run . --openai-token <your-openai-token-here> --discord-bot-token <bot-token>
+ $~/code/torontobot> go run . --openai-token <your-openai-token-here>
 ```
 
 Now you can do something like this:
@@ -77,7 +76,7 @@ Query result:
 ## Inspiration
 
 This project is inspired by the work being done on [textSQL](https://github.com/caesarHQ/textSQL),
-we've simply retooled it to better fit the Torontoverse/Geomodulus ecosystem.
+we've retooled the idea to better fit the Torontoverse ecosystem.
 
 ## Support
 

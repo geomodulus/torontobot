@@ -17,6 +17,7 @@ import (
 
 type DataEntry struct {
 	Name  string
+	Date  int
 	Value float64
 }
 
@@ -107,6 +108,41 @@ func GenerateBarChartJS(selector, title string, data []*DataEntry, isCurrency bo
 	return jsIntro + string(jsFile), nil
 }
 
+func GenerateLineChartJS(selector, title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
+	// Set default options
+	opts := ChartOptions{
+		BaseWidthJS: breakpointWidth,
+	}
+	// Apply user-provided options
+	for _, option := range options {
+		option(&opts)
+	}
+
+	input := struct {
+		Selector, Title string
+		Data            []*DataEntry
+		IsCurrency      bool
+	}{
+		Selector:   selector,
+		Title:      title,
+		Data:       data,
+		IsCurrency: isCurrency,
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return "", fmt.Errorf("marshalling data: %v", err)
+	}
+	jsIntro := fmt.Sprintf(
+		"%s\nconst input = %s;\n",
+		opts.BaseWidthJS,
+		string(inputJSON))
+	jsFile, err := os.ReadFile("./viz/line_chart.js")
+	if err != nil {
+		return "", fmt.Errorf("reading js file: %v", err)
+	}
+	return jsIntro + string(jsFile), nil
+}
+
 const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -137,6 +173,15 @@ const htmlContent = `
 // GenerateBarChartHTML generates an bare HTML file containing only styles, fonts and.
 func GenerateBarChartHTML(title string, data []*DataEntry, isCurrency bool) (string, error) {
 	js, err := GenerateBarChartJS("body", title, data, isCurrency)
+	if err != nil {
+		return "", fmt.Errorf("generating js: %v", err)
+	}
+	return strings.Replace(htmlContent, "REPLACE_ME_WITH_CHART_JS", js, 1), nil
+}
+
+// GenerateLineChartHTML generates an bare HTML file containing only styles, fonts and.
+func GenerateLineChartHTML(title string, data []*DataEntry, isCurrency bool) (string, error) {
+	js, err := GenerateLineChartJS("body", title, data, isCurrency)
 	if err != nil {
 		return "", fmt.Errorf("generating js: %v", err)
 	}
