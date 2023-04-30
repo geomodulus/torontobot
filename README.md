@@ -12,6 +12,8 @@ Join [our Discord](https://discord.gg/sQzxHBq8Q2). In the "Open Data" channel, u
 This bot is brand new, so go easy on it if it doesn't get things right. It can answer questions
 about the operating budget surprisingly well!
 
+To run queries locally you'll need an OpenAI API token. Get one at openai.com.
+
 ## Dependencies
 
 This project requires the Go programming language and sqlite3 installed on your local system. Both
@@ -20,16 +22,19 @@ very easy to install.
 ## Ingest
 
 First thing to do is initialize the database. We're building our proof-of-concept with a single
-file: the 2023 City of Toronto approved operating budget.
+data source: the City of Toronto approved operating budget. This file has good quality from 2014 
+and because it's one big flat table covering the whole city budget, it's useful for a lot of
+different queries.
 
-We chose this file because it's one big flat table that's amenable to a lot of difference queries.
+We need to create a local database file containing the target data so we can query it locally. At
+present, a fully loaded database file is about 15MB.
 
 First, you'll need to intialize a fresh, empty database. Do it like this (in the `db` dir):
 ```
  $~/code/torontobot/db> go run migrate.go
 ```
 
-That will create `toronto.db`, a sqlite3 database we'll use to store our data.
+That will create `toronto.db`, the `sqlite3` database we'll use to store our data.
 
 Then, run the following ingest command:
 ```
@@ -37,7 +42,7 @@ Then, run the following ingest command:
 ```
 
 Over the course of the next several minutes, this script will download City of Toronto operating
-budget data for the years 2014 through 2023.
+budget data for the years 2014 through 2023 collating and storing every entry in our database file.
 
 ## Usage
 
