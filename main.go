@@ -92,14 +92,6 @@ func main() {
 			log.Fatalf("Error creating Discord session: %v", err)
 		}
 		ds.AddHandler(bot.slashCommandHandler)
-		//		ds.AddHandler(func(s *discordgo.Session, _ *discordgo.Ready) {
-		//			err := s.UpdateStatusComplex(discordgo.UpdateStatusData{
-		//				Status: "online",
-		//			})
-		//			if err != nil {
-		//				log.Println("Error updating bot status:", err)
-		//			}
-		//		})
 		if err = ds.Open(); err != nil {
 			log.Fatalf("Error opening Discord connection: %v", err)
 		}
@@ -167,21 +159,6 @@ func main() {
 		}
 		switch strings.ToLower(chartSelected.Chart) {
 		case "bar chart":
-			//	fmt.Println("Generating bar chart...")
-			//	pngBytes, err := bot.GenerateBarChartPNG(
-			//		ctx,
-			//		chartSelected.Title,
-			//		chartSelected.Data,
-			//		chartSelected.ValueIsCurrency)
-			//	if err != nil {
-			//		fmt.Println("Error generating PNG:", err)
-			//		continue
-			//	}
-			//		if err = ioutil.WriteFile("../mainapp/static/dev-chart.png", pngBytes, 0644); err != nil {
-			//			fmt.Println("Error writing file:", err)
-			//			continue
-			//		}
-
 			if store != nil {
 				js, err := viz.GenerateBarChartJS(
 					"#torontobot-chart",
