@@ -254,7 +254,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 			}
 
 			out := fmt.Sprintf(
-				"Question: *%s*\n\n%s\n\n%s\n\nExecuting query %q\n",
+				"Question: *%s*\n\n%s\n\n%s\n\nExecuting query `%s`\n",
 				question,
 				sqlAnalysis.Schema,
 				sqlAnalysis.Applicability,
