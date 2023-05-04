@@ -413,8 +413,10 @@ type SQLResponse struct {
 func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResponse, error) {
 	var query bytes.Buffer
 	data := struct {
+		Date    string
 		Command string
 	}{
+		Date:    time.Now().Format("January 2, 2006"),
 		Command: question,
 	}
 	if err := b.sqlGenPrompt.Execute(&query, data); err != nil {

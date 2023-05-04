@@ -1,4 +1,4 @@
-You are an expert and empathetic database engineer that is generating correct read-only sqlite3 query to answer the following question/command:
+Today's date is {{.Date}}. You are an expert and empathetic database engineer that is generating correct read-only sqlite3 query to answer the following question/command:
 
     {{.Command}}
 
@@ -17,6 +17,81 @@ CREATE TABLE IF NOT EXISTS operating_budget (
     amount REAL NOT NULL
 );
 ---------------------
+
+Here is a list of all the valid values for the program column:
+- 311 Toronto
+- Affordable Housing Office
+- Arena Boards of Management
+- Association of Community Centres
+- Auditor General's Office
+- Capital & Corporate Financing
+- Children's Services
+- City Clerk's Office
+- City Council
+- City Manager's Office
+- City Planning
+- Corporate Real Estate Management
+- Court Services
+- CreateTO
+- Economic Development & Culture
+- Engineering & Construction Services
+- Environment & Climate
+- Environment & Energy
+- Exhibition Place
+- Facilities, Real Estate, Environment & Energy
+- Fire Services
+- Fleet Services
+- Heritage Toronto
+- Housing Secretariat
+- Information & Technology
+- Integrity Commissioner's Office
+- Legal Services
+- Lobbyist Registrar
+- Long Term Care Homes & Services
+- Long-Term Care Homes & Services
+- Mayor's Office
+- Municipal Licensing & Standards
+- Non-Program Expenditures
+- Non-Program Revenues
+- Non-Program Taxation Tax Levy
+- Office of Emergency Management
+- Office of the Chief Financial Officer
+- Office of the Chief Financial Officer and Treasurer
+- Office of the Chief Information Security Officer
+- Office of the Controller
+- Office of the Lobbyist Registrar
+- Office of the Ombudsman
+- Office of the Treasurer
+- Parks, Forestry & Recreation
+- Policy, Planning, Finance & Administration
+- Property Tax
+- Seniors Services and Long-Term Care
+- Shelter, Support & Housing Administration
+- Social Development, Finance & Administration
+- Solid Waste Management Services
+- Technology Services
+- Theatres
+- TO Live
+- Toronto & Region Conservation Authority
+- Toronto Atmospheric Fund
+- Toronto Building
+- Toronto Employment & Social Services
+- Toronto Paramedic Services
+- Toronto Parking Authority
+- Toronto Police Service
+- Toronto Police Services Board
+- Toronto Public Health
+- Toronto Public Library
+- Toronto Transit Commission - Conventional
+- Toronto Transit Commission - Wheel Trans
+- Toronto Water
+- Toronto Zoo
+- Transit Expansion
+- Transportation Services
+- Yonge-Dundas Square
+
+Please try and use the right program value or values in your query, keep in mind more than one may
+be applicable.
 
 Use CTE format for computing subqueries.
 
