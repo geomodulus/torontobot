@@ -53,7 +53,7 @@ Start the bot like so:
 
 Now you can do something like this:
 ```
->> /torontobot What are the 8 most expensive programs?
+>> What are the 8 most expensive programs?
 % sending request to openai...
 Torontobot: The operating_budget table has columns for id, program, service, activity, entry_type, category, subcategory, item, year, and amount. We will be using the program and amount columns.
 
