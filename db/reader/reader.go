@@ -37,7 +37,9 @@ func ReadDataTable(db *sql.DB, sqlQuery string) (string, error) {
 	}
 	tw.AppendHeader(header)
 
+	hasRows := false
 	for rows.Next() {
+		hasRows = true
 		columns := make([]interface{}, columnCount)
 		columnPointers := make([]interface{}, columnCount)
 
@@ -60,6 +62,10 @@ func ReadDataTable(db *sql.DB, sqlQuery string) (string, error) {
 		tw.AppendRow(row)
 	}
 	rows.Close()
+
+	if !hasRows {
+		return "", sql.ErrNoRows
+	}
 
 	return tw.Render(), nil
 }

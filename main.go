@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"strings"
-	"text/template"
-	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -20,18 +17,12 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/geomodulus/citygraph"
-	"github.com/geomodulus/torontobot/db/reader"
+	"github.com/geomodulus/torontobot/bot"
 	"github.com/geomodulus/torontobot/storage"
 	"github.com/geomodulus/torontobot/viz"
 )
 
 const (
-	// Model is the openai model to query. GPT-4 is expensive, so we use GPT-3.5.
-	Model = openai.GPT3Dot5Turbo
-	// RespTemp is the response temperature we want from the model. Default temp is 1.0 and higher
-	// is more "creative".
-	RespTemp = 0.5
-
 	// Torontoverse Discord server ID
 	GuildID = "1023614976772030605"
 )
@@ -58,17 +49,6 @@ func main() {
 		store = &citygraph.Store{GraphClient: citygraph.NewClient(graphConn)}
 	}
 
-	sqlGenPrompt, err := template.ParseFiles("./prompts/sql_gen.txt")
-	if err != nil {
-		fmt.Println("Error parsing template:", err)
-		return
-	}
-	chartSelectPrompt, err := template.ParseFiles("./prompts/chart_select.txt")
-	if err != nil {
-		fmt.Println("Error parsing template:", err)
-		return
-	}
-
 	ai := openai.NewClient(*openaiToken)
 
 	// Connect to the SQLite database
@@ -78,45 +58,18 @@ func main() {
 	}
 	defer db.Close()
 
-	bot := &TorontoBot{
-		hostname:          *hostname,
-		sqlGenPrompt:      sqlGenPrompt,
-		chartSelectPrompt: chartSelectPrompt,
-		graphStore:        store,
-		ai:                ai,
-		db:                db,
+	tb, err := bot.New(db, ai, store, *hostname)
+	if err != nil {
+		log.Fatalf("Error creating bot: %s", err)
 	}
 
 	if *discordBotToken != "" {
-		ds, err := discordgo.New("Bot " + *discordBotToken)
+		discordBotServer, err := OpenDiscordBotServer(*discordBotToken, tb)
 		if err != nil {
-			log.Fatalf("Error creating Discord session: %v", err)
+			log.Fatalf("Error opening Discord bot server: %s", err)
 		}
-		ds.AddHandler(bot.slashCommandHandler)
-		if err = ds.Open(); err != nil {
-			log.Fatalf("Error opening Discord connection: %v", err)
-		}
-		defer ds.Close()
-		cmd, err := ds.ApplicationCommandCreate(ds.State.User.ID, GuildID, &discordgo.ApplicationCommand{
-			Name:        "torontobot",
-			Description: "Responds to questions about city of Toronto Open Data.",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "question",
-					Description: "Question about Toronto open data",
-					Required:    true,
-				},
-			},
-		})
-		if err != nil {
-			log.Fatalf("Cannot create Discord command: %v", err)
-		}
-		defer func() {
-			if err := ds.ApplicationCommandDelete(ds.State.User.ID, GuildID, cmd.ID); err != nil {
-				log.Fatalf("Cannot delete Discord command: %v", err)
-			}
-		}()
+		defer discordBotServer.Close()
+
 		fmt.Println("TorontoBot is now live on Discord. Press CTRL-C to exit.")
 	}
 
@@ -133,9 +86,17 @@ func main() {
 		if strings.TrimSpace(question) == "" {
 			continue
 		}
-		sqlAnalysis, err := bot.SQLAnalysis(ctx, question)
+		sqlAnalysis, err := tb.SQLAnalysis(ctx, question)
 		if err != nil {
 			fmt.Println("Error analyzing SQL query:", err)
+			continue
+		}
+
+		if sqlAnalysis.MissingData != "" {
+			fmt.Printf(
+				"I can't answer that: %s\n\n%s\n",
+				sqlAnalysis.MissingData,
+				sqlAnalysis.Applicability)
 			continue
 		}
 
@@ -145,15 +106,19 @@ func main() {
 			sqlAnalysis.Applicability,
 			sqlAnalysis.SQL)
 
-		resultsTable, err := reader.ReadDataTable(bot.db, sqlAnalysis.SQL)
+		resultsTable, err := tb.LoadResults(sqlAnalysis.SQL)
 		if err != nil {
-			fmt.Println("Error executing SQL query:", err)
+			if err == sql.ErrNoRows {
+				fmt.Println("No results found.")
+			} else {
+				fmt.Println("Error executing SQL query:", err)
+			}
 			continue
 		}
 
 		fmt.Printf("\nQuery result:\n```%s```\n", resultsTable)
 
-		chartSelected, err := bot.SelectChart(ctx, question, resultsTable)
+		chartSelected, err := tb.SelectChart(ctx, question, resultsTable)
 		if err != nil {
 			fmt.Println("Error selecting chart:", err)
 			continue
@@ -171,7 +136,7 @@ func main() {
 					fmt.Println("Error generating JS:", err)
 					continue
 				}
-				pngBytes, err := bot.GenerateBarChartPNG(
+				pngBytes, err := tb.GenerateBarChartPNG(
 					ctx,
 					1200, 900,
 					chartSelected.Title,
@@ -190,7 +155,7 @@ func main() {
 					fmt.Println("Error saving chart to GCS:", err)
 					continue
 				}
-				modPath, err := bot.SaveToGraph(
+				modPath, err := tb.SaveToGraph(
 					ctx,
 					id,
 					question,
@@ -202,7 +167,7 @@ func main() {
 					fmt.Println("Error saving chart to graph:", err)
 					continue
 				}
-				fmt.Printf("Published chart at %s\n", bot.hostname+modPath)
+				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 			}
 
 		case "line chart":
@@ -218,7 +183,7 @@ func main() {
 					continue
 				}
 				id := citygraph.NewID().String()
-				modPath, err := bot.SaveToGraph(
+				modPath, err := tb.SaveToGraph(
 					ctx,
 					id,
 					question,
@@ -230,7 +195,7 @@ func main() {
 					fmt.Println("Error saving chart to graph:", err)
 					continue
 				}
-				fmt.Printf("Published chart at %s\n", bot.hostname+modPath)
+				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 			}
 			//case "pie chart":
 			//case "scatter plot":
@@ -241,16 +206,52 @@ func main() {
 	}
 }
 
-type TorontoBot struct {
-	hostname          string
-	sqlGenPrompt      *template.Template
-	chartSelectPrompt *template.Template
-	graphStore        *citygraph.Store
-	ai                *openai.Client
-	db                *sql.DB
+type DiscordBotServer struct {
+	session *discordgo.Session
+	bot     *bot.TorontoBot
+	cmd     *discordgo.ApplicationCommand
 }
 
-func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.InteractionCreate) {
+func OpenDiscordBotServer(token string, tb *bot.TorontoBot) (*DiscordBotServer, error) {
+	ds, err := discordgo.New("Bot " + token)
+	if err != nil {
+		return nil, fmt.Errorf("error creating Discord session: %v", err)
+	}
+	s := &DiscordBotServer{
+		session: ds,
+		bot:     tb,
+	}
+	s.session.AddHandler(s.slashCommandHandler)
+	if err = s.session.Open(); err != nil {
+		return nil, fmt.Errorf("error opening Discord connection: %v", err)
+	}
+	cmd, err := ds.ApplicationCommandCreate(ds.State.User.ID, GuildID, &discordgo.ApplicationCommand{
+		Name:        "torontobot",
+		Description: "Responds to questions about city of Toronto Open Data.",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "question",
+				Description: "Question about Toronto open data",
+				Required:    true,
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating Discord command: %v", err)
+	}
+	s.cmd = cmd
+	return s, nil
+}
+
+func (s *DiscordBotServer) Close() error {
+	if err := s.session.ApplicationCommandDelete(s.session.State.User.ID, GuildID, s.cmd.ID); err != nil {
+		return fmt.Errorf("error deleting Discord command: %v", err)
+	}
+	return s.session.Close()
+}
+
+func (s *DiscordBotServer) slashCommandHandler(ds *discordgo.Session, i *discordgo.InteractionCreate) {
 	ctx := context.Background()
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
@@ -266,7 +267,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 			}
 			question := option.StringValue()
 
-			sqlAnalysis, err := b.SQLAnalysis(ctx, question)
+			sqlAnalysis, err := s.bot.SQLAnalysis(ctx, question)
 			if err != nil {
 				errMsg := fmt.Sprintf("Error analyzing SQL query: %v", err)
 				_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
@@ -278,11 +279,20 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			out := fmt.Sprintf(
-				"Question: *%s*\n\n%s\n\nExecuting query `%s`\n",
-				question,
-				sqlAnalysis.Applicability,
-				sqlAnalysis.SQL)
+			var out string
+			if sqlAnalysis.MissingData != "" {
+				out = fmt.Sprintf(
+					"Question: *%s*\n\nI can't answer that: %s\n\n%s\n",
+					question,
+					sqlAnalysis.Applicability,
+					sqlAnalysis.MissingData)
+			} else {
+				out = fmt.Sprintf(
+					"Question: *%s*\n\n%s\n\nExecuting query `%s`\n",
+					question,
+					sqlAnalysis.Applicability,
+					sqlAnalysis.SQL)
+			}
 			// Edit the original deferred response with the actual content
 			_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Content: &out,
@@ -305,9 +315,14 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			resultsTable, err := reader.ReadDataTable(b.db, sqlAnalysis.SQL)
+			resultsTable, err := s.bot.LoadResults(sqlAnalysis.SQL)
 			if err != nil {
-				errMsg := fmt.Sprintf("Error executing SQL query: %v", err)
+				var errMsg string
+				if err == sql.ErrNoRows {
+					errMsg = "No results found for that query. Try again?"
+				} else {
+					errMsg = fmt.Sprintf("Error reading data: %v", err)
+				}
 				_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
 					Content: &errMsg,
 				})
@@ -340,14 +355,14 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 				return
 			}
 
-			chartSelected, err := b.SelectChart(ctx, question, resultsTable)
+			chartSelected, err := s.bot.SelectChart(ctx, question, resultsTable)
 			if err != nil {
 				fmt.Println("Error selecting chart:", err)
 				continue
 			}
 			switch strings.ToLower(chartSelected.Chart) {
 			case "bar chart":
-				pngBytes, err := b.GenerateBarChartPNG(
+				pngBytes, err := s.bot.GenerateBarChartPNG(
 					ctx,
 					675, 750,
 					chartSelected.Title,
@@ -373,10 +388,10 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 					fmt.Println("Error editing follow-up message:", err)
 					continue
 				}
-				if b.graphStore != nil {
+				if s.bot.HasGraphStore() {
 					// Send the chart!
 					followupMessage, err = ds.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-						Content: fmt.Sprintf("Publishing to %s...", b.hostname),
+						Content: fmt.Sprintf("Publishing to %s...", s.bot.Hostname),
 					})
 					if err != nil {
 						fmt.Println("Error sending follow-up message:", err)
@@ -393,7 +408,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 						fmt.Println("Error generating JS:", err)
 						continue
 					}
-					shareImageBytes, err := b.GenerateBarChartPNG(
+					shareImageBytes, err := s.bot.GenerateBarChartPNG(
 						ctx,
 						1200, 900,
 						chartSelected.Title,
@@ -412,7 +427,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 						fmt.Println("Error saving chart to GCS:", err)
 						continue
 					}
-					modPath, err := b.SaveToGraph(
+					modPath, err := s.bot.SaveToGraph(
 						ctx,
 						id,
 						question,
@@ -425,7 +440,7 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 						continue
 					}
 
-					out := fmt.Sprintf("Published chart at %s\n", b.hostname+modPath)
+					out := fmt.Sprintf("Published chart at %s\n", s.bot.Hostname+modPath)
 					_, err = ds.FollowupMessageEdit(i.Interaction, followupMessage.ID, &discordgo.WebhookEdit{
 						Content: &out,
 					})
@@ -451,111 +466,6 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 		}
 	}
 
-}
-
-type SQLResponse struct {
-	Schema        string
-	Applicability string
-	SQL           string
-}
-
-func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResponse, error) {
-	var query bytes.Buffer
-	data := struct {
-		Date    string
-		Command string
-	}{
-		Date:    time.Now().Format("January 2, 2006"),
-		Command: question,
-	}
-	if err := b.sqlGenPrompt.Execute(&query, data); err != nil {
-		return nil, fmt.Errorf("executing template: %+v", err)
-	}
-	log.Printf("sending request to openai: %q\n", query.String())
-	aiResp, err := b.ai.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: Model,
-		Messages: []openai.ChatCompletionMessage{{
-			Role:    openai.ChatMessageRoleUser,
-			Content: query.String(),
-		}},
-		Temperature: RespTemp,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("CreateChatCompletion: %v", err)
-	}
-	log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
-
-	var resp SQLResponse
-	if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
-		return nil, fmt.Errorf("unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
-	}
-	return &resp, nil
-}
-
-type ChartSelectResponse struct {
-	Chart           string
-	Title           string
-	Data            []*viz.DataEntry
-	ValueIsCurrency bool
-}
-
-type ChartType int
-
-const (
-	ChartTypeUnknown ChartType = iota
-	ChartTypeBar
-	ChartTypeLine
-	ChartTypePie
-	ChartTypeScatter
-)
-
-func (b *TorontoBot) SelectChart(ctx context.Context, question, dataTable string) (*ChartSelectResponse, error) {
-	var query bytes.Buffer
-	data := struct {
-		Title string
-		Data  string
-	}{
-		Title: question,
-		Data:  dataTable,
-	}
-	if err := b.chartSelectPrompt.Execute(&query, data); err != nil {
-		return nil, fmt.Errorf("executing template: %+v", err)
-	}
-	log.Printf("sending request to openai: %q\n", query.String())
-	aiResp, err := b.ai.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: Model,
-		Messages: []openai.ChatCompletionMessage{{
-			Role:    openai.ChatMessageRoleUser,
-			Content: query.String(),
-		}},
-		Temperature: RespTemp,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("CreateChatCompletion: %v", err)
-	}
-	log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
-
-	var resp ChartSelectResponse
-	if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
-		return nil, fmt.Errorf("unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
-	}
-
-	fmt.Printf("%+v\n", resp)
-
-	return &resp, nil
-}
-
-func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, width, height float64, title string, data []*viz.DataEntry, isCurrency bool, chartOptions ...viz.ChartOption) ([]byte, error) {
-	chartHTML, err := viz.GenerateBarChartHTML(title, data, isCurrency, chartOptions...)
-	if err != nil {
-		return []byte{}, fmt.Errorf("generating bar chart: %v", err)
-	}
-	//	filename := "../mainapp/static/dev-chart.html"
-	//	if err := ioutil.WriteFile(filename, []byte(chartHTML), 0644); err != nil {
-	//		return []byte{}, fmt.Errorf("writing chart.html: %v", err)
-	//	}
-	//	fmt.Println("Wrote", filename)
-	return viz.SVGToPNG(ctx, width, height, chartHTML)
 }
 
 func renderBody(question, schemaThoughts, analysis, sqlQuery string) string {
@@ -585,48 +495,4 @@ func renderBody(question, schemaThoughts, analysis, sqlQuery string) string {
 				<p><em>` + analysis + `</em></p>
 				<h5 class="font-bold">SQL Query</h5>
 				<p class="p-2 bg-map-800 text-map-200"><code>` + sqlQuery + `</code></p>`
-}
-
-func (b *TorontoBot) SaveToGraph(ctx context.Context, id, title, body, js, featureImage, user string) (string, error) {
-	camera := map[string]interface{}{
-		"": map[string]interface{}{
-			"center":  map[string]float64{"lng": -79.384, "lat": 43.645},
-			"zoom":    13.8,
-			"pitch":   0,
-			"bearing": -30,
-		}}
-	mod := &citygraph.Module{
-		ID:           id,
-		Name:         title,
-		Headline:     fmt.Sprintf("<h1>City Budget: %s</h1>", title),
-		Categories:   []string{"Open Data"},
-		Creators:     []string{user},
-		Camera:       camera,
-		FeatureImage: featureImage,
-		Description:  "User-generated open data visualization",
-		PubDate:      time.Now().Format("2006-01-02"),
-		CodeCredit:   "TorontoBot, an open data bot",
-	}
-	if err := b.graphStore.WriteModule(ctx, mod); err != nil {
-		return "", fmt.Errorf("writing module: %v", err)
-	}
-
-	q, err := mod.VertexQuery()
-	if err != nil {
-		return "", fmt.Errorf("generating vertex query: %v", err)
-	}
-	if err := b.graphStore.WriteBodyText(ctx, q, body); err != nil {
-		return "", fmt.Errorf("writing body text: %v", err)
-	}
-
-	js += "\n\nmodule.initAdUnits();"
-	if err := b.graphStore.WriteJS(ctx, q, js); err != nil {
-		return "", fmt.Errorf("writing JS: %v", err)
-	}
-
-	slugID, err := mod.SlugID()
-	if err != nil {
-		return "", fmt.Errorf("generating slug ID: %v", err)
-	}
-	return fmt.Sprintf("/mod/%s/%s", slugID, mod.SlugTitle()), nil
 }

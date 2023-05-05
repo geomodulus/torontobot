@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS operating_budget (
 );
 ---------------------
 
+This is the only table in the database, all queries must be directed at this table.
+
 Here is a list of all the valid values for the program column:
 - 311 Toronto
 - Affordable Housing Office
@@ -101,9 +103,11 @@ Provide a properly formatted JSON object with the following information. Ensure 
     "Applicability": "<1 to 2 sentences about which columns and enums are relevant, or which ones are missing>",
     "SQL": "<your query>"
 }
-However, if the tables don't contain all the required data (e.g. the column isn't there or there aren't relevant enums), instead return a JSON object with just: 
+
+However, if the tables don't contain all the required data (e.g. a column isn't there or there
+isn't enough data to know what program values to use in the query), instead return a JSON object with just: 
 {
-    "Schema": "<1 to 2 sentences about the tables/columns/enums above to use>",
+    "Schema": "<1 to 2 sentences about the tables/columns/values above to use>",
     "Applicability": "<1 to 2 sentences about which columns and enums are relevant, or which ones are missing>",
     "MissingData": "<1 to 2 sentences about what data is missing>"
 }
