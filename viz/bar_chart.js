@@ -21,9 +21,9 @@
 //  entryName = "Location",
 //  entryValueName = "Thefts",
 // baseWidth is setDynamically.
+// baseHeight is setDynamically.
 
-const baseHeight = 750,
-  titleSize = "1.6em",
+const titleSize = "1.6em",
   yLabelSize = "1.1em",
   margin = { top: 50, right: 210, bottom: 0, left: 0 },
   colors = [

@@ -55,11 +55,24 @@ func fixedWidth(width int) string {
 `, width)
 }
 
+func fixedHeight(height int) string {
+	return fmt.Sprintf(`
+  const baseHeight = %d;
+`, height)
+}
+
 type ChartOptions struct {
-	BaseWidthJS string
+	BaseWidthJS  string
+	BaseHeightJS string
 }
 
 type ChartOption func(*ChartOptions)
+
+func WithFixedHeight(height int) ChartOption {
+	return func(o *ChartOptions) {
+		o.BaseHeightJS = fixedHeight(height)
+	}
+}
 
 func WithFixedWidth(width int) ChartOption {
 	return func(o *ChartOptions) {
@@ -76,7 +89,8 @@ func WithBreakpointWidth() ChartOption {
 func GenerateBarChartJS(selector, title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
 	// Set default options
 	opts := ChartOptions{
-		BaseWidthJS: breakpointWidth,
+		BaseWidthJS:  breakpointWidth,
+		BaseHeightJS: fixedHeight(750),
 	}
 	// Apply user-provided options
 	for _, option := range options {
@@ -98,8 +112,9 @@ func GenerateBarChartJS(selector, title string, data []*DataEntry, isCurrency bo
 		return "", fmt.Errorf("marshalling data: %v", err)
 	}
 	jsIntro := fmt.Sprintf(
-		"%s\nconst input = %s;\n",
+		"%s\n%s\nconst input = %s;\n",
 		opts.BaseWidthJS,
+		opts.BaseHeightJS,
 		string(inputJSON))
 	jsFile, err := os.ReadFile("./viz/bar_chart.js")
 	if err != nil {
@@ -133,8 +148,9 @@ func GenerateLineChartJS(selector, title string, data []*DataEntry, isCurrency b
 		return "", fmt.Errorf("marshalling data: %v", err)
 	}
 	jsIntro := fmt.Sprintf(
-		"%s\nconst input = %s;\n",
+		"%s\n%s\nconst input = %s;\n",
 		opts.BaseWidthJS,
+		opts.BaseHeightJS,
 		string(inputJSON))
 	jsFile, err := os.ReadFile("./viz/line_chart.js")
 	if err != nil {
@@ -171,8 +187,8 @@ const htmlContent = `
 `
 
 // GenerateBarChartHTML generates an bare HTML file containing only styles, fonts and.
-func GenerateBarChartHTML(title string, data []*DataEntry, isCurrency bool) (string, error) {
-	js, err := GenerateBarChartJS("body", title, data, isCurrency)
+func GenerateBarChartHTML(title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
+	js, err := GenerateBarChartJS("body", title, data, isCurrency, options...)
 	if err != nil {
 		return "", fmt.Errorf("generating js: %v", err)
 	}
@@ -180,15 +196,15 @@ func GenerateBarChartHTML(title string, data []*DataEntry, isCurrency bool) (str
 }
 
 // GenerateLineChartHTML generates an bare HTML file containing only styles, fonts and.
-func GenerateLineChartHTML(title string, data []*DataEntry, isCurrency bool) (string, error) {
-	js, err := GenerateLineChartJS("body", title, data, isCurrency)
+func GenerateLineChartHTML(title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
+	js, err := GenerateLineChartJS("body", title, data, isCurrency, options...)
 	if err != nil {
 		return "", fmt.Errorf("generating js: %v", err)
 	}
 	return strings.Replace(htmlContent, "REPLACE_ME_WITH_CHART_JS", js, 1), nil
 }
 
-func SVGToPNG(ctx context.Context, svgHTML string) ([]byte, error) {
+func SVGToPNG(ctx context.Context, width, height float64, svgHTML string) ([]byte, error) {
 	ctx, cancel := chromedp.NewContext(ctx)
 	defer cancel()
 
@@ -196,13 +212,13 @@ func SVGToPNG(ctx context.Context, svgHTML string) ([]byte, error) {
 	defer cancel()
 
 	var buf []byte
-	if err := chromedp.Run(ctx, saveSVGAsPNG(svgHTML, &buf)); err != nil {
+	if err := chromedp.Run(ctx, saveSVGAsPNG(svgHTML, width, height, &buf)); err != nil {
 		return []byte{}, fmt.Errorf("running chromedp: %v", err)
 	}
 	return buf, nil
 }
 
-func saveSVGAsPNG(htmlContent string, buf *[]byte) chromedp.Tasks {
+func saveSVGAsPNG(htmlContent string, width, height float64, buf *[]byte) chromedp.Tasks {
 	dataURL := "data:text/html;charset=utf-8;base64," + base64.StdEncoding.EncodeToString([]byte(htmlContent))
 
 	return chromedp.Tasks{
@@ -210,7 +226,7 @@ func saveSVGAsPNG(htmlContent string, buf *[]byte) chromedp.Tasks {
 		chromedp.WaitVisible(`svg`, chromedp.ByQuery),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			// Set the viewport to match the SVG size
-			err := emulation.SetDeviceMetricsOverride(675, 750, 1, false).
+			err := emulation.SetDeviceMetricsOverride(int64(width), int64(height), 1, false).
 				WithScreenOrientation(&emulation.ScreenOrientation{
 					Type:  emulation.OrientationTypePortraitPrimary,
 					Angle: 0,
@@ -226,8 +242,8 @@ func saveSVGAsPNG(htmlContent string, buf *[]byte) chromedp.Tasks {
 				WithClip(&page.Viewport{
 					X:      0,
 					Y:      0,
-					Width:  675,
-					Height: 750,
+					Width:  width,
+					Height: height,
 					Scale:  1,
 				}).
 				Do(ctx)

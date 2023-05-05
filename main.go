@@ -21,6 +21,7 @@ import (
 
 	"github.com/geomodulus/citygraph"
 	"github.com/geomodulus/torontobot/db/reader"
+	"github.com/geomodulus/torontobot/storage"
 	"github.com/geomodulus/torontobot/viz"
 )
 
@@ -170,11 +171,32 @@ func main() {
 					fmt.Println("Error generating JS:", err)
 					continue
 				}
+				pngBytes, err := bot.GenerateBarChartPNG(
+					ctx,
+					1200, 900,
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithFixedWidth(1200),
+					viz.WithFixedHeight(1400),
+				)
+				if err != nil {
+					fmt.Println("Error generating PNG:", err)
+					continue
+				}
+				id := citygraph.NewID().String()
+				featureImageObject := id + ".png"
+				if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(pngBytes)); err != nil {
+					fmt.Println("Error saving chart to GCS:", err)
+					continue
+				}
 				modPath, err := bot.SaveToGraph(
 					ctx,
-					chartSelected.Title,
+					id,
+					question,
 					renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
 					js,
+					"https://dev.geomodul.us/dev-charts/"+featureImageObject,
 					"Local User")
 				if err != nil {
 					fmt.Println("Error saving chart to graph:", err)
@@ -195,11 +217,14 @@ func main() {
 					fmt.Println("Error generating JS:", err)
 					continue
 				}
+				id := citygraph.NewID().String()
 				modPath, err := bot.SaveToGraph(
 					ctx,
-					chartSelected.Title,
+					id,
+					question,
 					renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
 					js,
+					"",
 					"Local User")
 				if err != nil {
 					fmt.Println("Error saving chart to graph:", err)
@@ -325,9 +350,13 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 			case "bar chart":
 				pngBytes, err := b.GenerateBarChartPNG(
 					ctx,
+					675, 750,
 					chartSelected.Title,
 					chartSelected.Data,
-					chartSelected.ValueIsCurrency)
+					chartSelected.ValueIsCurrency,
+					viz.WithFixedWidth(675),
+					viz.WithFixedHeight(750),
+				)
 				if err != nil {
 					fmt.Println("Error generating PNG:", err)
 					continue
@@ -365,11 +394,19 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 						fmt.Println("Error generating JS:", err)
 						continue
 					}
+					id := citygraph.NewID().String()
+					featureImageObject := id + ".png"
+					if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(pngBytes)); err != nil {
+						fmt.Println("Error saving chart to GCS:", err)
+						continue
+					}
 					modPath, err := b.SaveToGraph(
 						ctx,
-						chartSelected.Title,
+						id,
+						question,
 						renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
 						js,
+						"https://dev.geomodul.us/dev-charts/"+featureImageObject,
 						i.Member.User.Username)
 					if err != nil {
 						fmt.Println("Error saving to graph:", err)
@@ -496,8 +533,8 @@ func (b *TorontoBot) SelectChart(ctx context.Context, question, dataTable string
 	return &resp, nil
 }
 
-func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, title string, data []*viz.DataEntry, isCurrency bool) ([]byte, error) {
-	chartHTML, err := viz.GenerateBarChartHTML(title, data, isCurrency)
+func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, width, height float64, title string, data []*viz.DataEntry, isCurrency bool, chartOptions ...viz.ChartOption) ([]byte, error) {
+	chartHTML, err := viz.GenerateBarChartHTML(title, data, isCurrency, chartOptions...)
 	if err != nil {
 		return []byte{}, fmt.Errorf("generating bar chart: %v", err)
 	}
@@ -506,7 +543,7 @@ func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, title string, data
 	//		return []byte{}, fmt.Errorf("writing chart.html: %v", err)
 	//	}
 	//	fmt.Println("Wrote", filename)
-	return viz.SVGToPNG(ctx, chartHTML)
+	return viz.SVGToPNG(ctx, width, height, chartHTML)
 }
 
 func renderBody(question, schemaThoughts, analysis, sqlQuery string) string {
@@ -538,7 +575,7 @@ func renderBody(question, schemaThoughts, analysis, sqlQuery string) string {
 				<p class="p-2 bg-map-800 text-map-200"><code>` + sqlQuery + `</code></p>`
 }
 
-func (b *TorontoBot) SaveToGraph(ctx context.Context, title, body, js, user string) (string, error) {
+func (b *TorontoBot) SaveToGraph(ctx context.Context, id, title, body, js, featureImage, user string) (string, error) {
 	camera := map[string]interface{}{
 		"": map[string]interface{}{
 			"center":  map[string]float64{"lng": -79.384, "lat": 43.645},
@@ -547,15 +584,16 @@ func (b *TorontoBot) SaveToGraph(ctx context.Context, title, body, js, user stri
 			"bearing": -30,
 		}}
 	mod := &citygraph.Module{
-		ID:          citygraph.NewID().String(),
-		Name:        title,
-		Headline:    fmt.Sprintf("<h1>City Budget: %s</h1>", title),
-		Categories:  []string{"Open Data"},
-		Creators:    []string{user},
-		Camera:      camera,
-		Description: "User-generated open data visualization",
-		PubDate:     time.Now().Format("2006-01-02"),
-		CodeCredit:  "TorontoBot, an open data bot",
+		ID:           id,
+		Name:         title,
+		Headline:     fmt.Sprintf("<h1>City Budget: %s</h1>", title),
+		Categories:   []string{"Open Data"},
+		Creators:     []string{user},
+		Camera:       camera,
+		FeatureImage: featureImage,
+		Description:  "User-generated open data visualization",
+		PubDate:      time.Now().Format("2006-01-02"),
+		CodeCredit:   "TorontoBot, an open data bot",
 	}
 	if err := b.graphStore.WriteModule(ctx, mod); err != nil {
 		return "", fmt.Errorf("writing module: %v", err)
