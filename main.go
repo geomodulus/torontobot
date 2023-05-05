@@ -394,9 +394,22 @@ func (b *TorontoBot) slashCommandHandler(ds *discordgo.Session, i *discordgo.Int
 						fmt.Println("Error generating JS:", err)
 						continue
 					}
+					shareImageBytes, err := b.GenerateBarChartPNG(
+						ctx,
+						1200, 900,
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						viz.WithFixedWidth(1200),
+						viz.WithFixedHeight(1400),
+					)
+					if err != nil {
+						fmt.Println("Error generating PNG:", err)
+						continue
+					}
 					id := citygraph.NewID().String()
 					featureImageObject := id + ".png"
-					if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(pngBytes)); err != nil {
+					if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(shareImageBytes)); err != nil {
 						fmt.Println("Error saving chart to GCS:", err)
 						continue
 					}
