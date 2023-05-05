@@ -23,7 +23,7 @@ const (
 	Model = openai.GPT3Dot5Turbo
 	// RespTemp is the response temperature we want from the model. Default temp is 1.0 and higher
 	// is more "creative".
-	RespTemp = 0.5
+	RespTemp = 0.1
 )
 
 type TorontoBot struct {
@@ -96,6 +96,7 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 }
 
 func (b *TorontoBot) LoadResults(sqlQuery string) (string, error) {
+	fmt.Println("running sqlQuery:", sqlQuery)
 	return reader.ReadDataTable(b.db, sqlQuery)
 }
 
@@ -150,19 +151,6 @@ func (b *TorontoBot) SelectChart(ctx context.Context, question, dataTable string
 	fmt.Printf("%+v\n", resp)
 
 	return &resp, nil
-}
-
-func (b *TorontoBot) GenerateBarChartPNG(ctx context.Context, width, height float64, title string, data []*viz.DataEntry, isCurrency bool, chartOptions ...viz.ChartOption) ([]byte, error) {
-	chartHTML, err := viz.GenerateBarChartHTML(title, data, isCurrency, chartOptions...)
-	if err != nil {
-		return []byte{}, fmt.Errorf("generating bar chart: %v", err)
-	}
-	//	filename := "../mainapp/static/dev-chart.html"
-	//	if err := ioutil.WriteFile(filename, []byte(chartHTML), 0644); err != nil {
-	//		return []byte{}, fmt.Errorf("writing chart.html: %v", err)
-	//	}
-	//	fmt.Println("Wrote", filename)
-	return viz.SVGToPNG(ctx, width, height, chartHTML)
 }
 
 func (b *TorontoBot) HasGraphStore() bool {

@@ -64,6 +64,7 @@ func fixedHeight(height int) string {
 type ChartOptions struct {
 	BaseWidthJS  string
 	BaseHeightJS string
+	Theme        string
 }
 
 type ChartOption func(*ChartOptions)
@@ -161,7 +162,7 @@ func GenerateLineChartJS(selector, title string, data []*DataEntry, isCurrency b
 
 const htmlContent = `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="REPLACE_ME_WITH_THEME">
 <head>
     <meta charset="UTF-8">
     <title>SVG Export</title>
@@ -177,7 +178,7 @@ const htmlContent = `
     />
 	<script src="https://torontoverse.com/js/lib/d3/d3.min.js"></script>
 </head>
-<body class="bg-map-50 font-mono">
+<body class="bg-map-50 dark:bg-map-900 font-mono">
     <script type="text/javascript">
     // Add your D3.js visualization code here
 	  REPLACE_ME_WITH_CHART_JS
@@ -187,24 +188,73 @@ const htmlContent = `
 `
 
 // GenerateBarChartHTML generates an bare HTML file containing only styles, fonts and.
-func GenerateBarChartHTML(title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
+func GenerateBarChartHTML(title string, data []*DataEntry, isCurrency, darkMode bool, options ...ChartOption) (string, error) {
 	js, err := GenerateBarChartJS("body", title, data, isCurrency, options...)
 	if err != nil {
 		return "", fmt.Errorf("generating js: %v", err)
 	}
-	return strings.Replace(htmlContent, "REPLACE_ME_WITH_CHART_JS", js, 1), nil
+	var theme string
+	if darkMode {
+		theme = "dark"
+	}
+	themedHTML, err := strings.Replace(htmlContent, "REPLACE_ME_WITH_THEME", theme, 1), nil
+	if err != nil {
+		return "", fmt.Errorf("replacing theme: %v", err)
+	}
+	return strings.Replace(themedHTML, "REPLACE_ME_WITH_CHART_JS", js, 1), nil
 }
 
 // GenerateLineChartHTML generates an bare HTML file containing only styles, fonts and.
-func GenerateLineChartHTML(title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
+func GenerateLineChartHTML(title string, data []*DataEntry, isCurrency, darkMode bool, options ...ChartOption) (string, error) {
 	js, err := GenerateLineChartJS("body", title, data, isCurrency, options...)
 	if err != nil {
 		return "", fmt.Errorf("generating js: %v", err)
 	}
-	return strings.Replace(htmlContent, "REPLACE_ME_WITH_CHART_JS", js, 1), nil
+	var theme string
+	if darkMode {
+		theme = "dark"
+	}
+	themedHTML, err := strings.Replace(htmlContent, "REPLACE_ME_WITH_THEME", theme, 1), nil
+	if err != nil {
+		return "", fmt.Errorf("replacing theme: %v", err)
+	}
+	return strings.Replace(themedHTML, "REPLACE_ME_WITH_CHART_JS", js, 1), nil
 }
 
-func SVGToPNG(ctx context.Context, width, height float64, svgHTML string) ([]byte, error) {
+type ScreenshotOptions struct {
+	Width, Height, Scale float64
+}
+
+type ScreenshotOption func(*ScreenshotOptions)
+
+func WithScale(scale float64) ScreenshotOption {
+	return func(o *ScreenshotOptions) {
+		o.Scale = scale
+	}
+}
+
+func WithWidth(width float64) ScreenshotOption {
+	return func(o *ScreenshotOptions) {
+		o.Width = width
+	}
+}
+
+func WithHeight(height float64) ScreenshotOption {
+	return func(o *ScreenshotOptions) {
+		o.Height = height
+	}
+}
+
+func ScreenshotHTML(ctx context.Context, srcHTML string, options ...ScreenshotOption) ([]byte, error) {
+	opts := ScreenshotOptions{
+		Width:  1280,
+		Height: 720,
+		Scale:  1,
+	}
+	for _, option := range options {
+		option(&opts)
+	}
+
 	ctx, cancel := chromedp.NewContext(ctx)
 	defer cancel()
 
@@ -212,13 +262,13 @@ func SVGToPNG(ctx context.Context, width, height float64, svgHTML string) ([]byt
 	defer cancel()
 
 	var buf []byte
-	if err := chromedp.Run(ctx, saveSVGAsPNG(svgHTML, width, height, &buf)); err != nil {
+	if err := chromedp.Run(ctx, saveScreenshotPNG(srcHTML, opts.Width, opts.Height, opts.Scale, &buf)); err != nil {
 		return []byte{}, fmt.Errorf("running chromedp: %v", err)
 	}
 	return buf, nil
 }
 
-func saveSVGAsPNG(htmlContent string, width, height float64, buf *[]byte) chromedp.Tasks {
+func saveScreenshotPNG(htmlContent string, width, height, scale float64, buf *[]byte) chromedp.Tasks {
 	dataURL := "data:text/html;charset=utf-8;base64," + base64.StdEncoding.EncodeToString([]byte(htmlContent))
 
 	return chromedp.Tasks{
@@ -244,7 +294,7 @@ func saveSVGAsPNG(htmlContent string, width, height float64, buf *[]byte) chrome
 					Y:      0,
 					Width:  width,
 					Height: height,
-					Scale:  1,
+					Scale:  scale,
 				}).
 				Do(ctx)
 			if err != nil {

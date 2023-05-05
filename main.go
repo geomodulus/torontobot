@@ -136,23 +136,17 @@ func main() {
 					fmt.Println("Error generating JS:", err)
 					continue
 				}
-				pngBytes, err := tb.GenerateBarChartPNG(
+				id := citygraph.NewID().String()
+
+				featureImageURL, err := generateAndUploadFeatureImage(
 					ctx,
-					1200, 900,
+					id,
 					chartSelected.Title,
 					chartSelected.Data,
 					chartSelected.ValueIsCurrency,
-					viz.WithFixedWidth(1200),
-					viz.WithFixedHeight(1400),
 				)
 				if err != nil {
-					fmt.Println("Error generating PNG:", err)
-					continue
-				}
-				id := citygraph.NewID().String()
-				featureImageObject := id + ".png"
-				if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(pngBytes)); err != nil {
-					fmt.Println("Error saving chart to GCS:", err)
+					fmt.Println("Error generating feature image:", err)
 					continue
 				}
 				modPath, err := tb.SaveToGraph(
@@ -161,7 +155,7 @@ func main() {
 					question,
 					renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
 					js,
-					"https://dev.geomodul.us/dev-charts/"+featureImageObject,
+					featureImageURL,
 					"Local User")
 				if err != nil {
 					fmt.Println("Error saving chart to graph:", err)
@@ -362,19 +356,29 @@ func (s *DiscordBotServer) slashCommandHandler(ds *discordgo.Session, i *discord
 			}
 			switch strings.ToLower(chartSelected.Chart) {
 			case "bar chart":
-				pngBytes, err := s.bot.GenerateBarChartPNG(
-					ctx,
-					675, 750,
+				chartHTML, err := viz.GenerateBarChartHTML(
 					chartSelected.Title,
 					chartSelected.Data,
 					chartSelected.ValueIsCurrency,
+					false, // not dark mode
 					viz.WithFixedWidth(675),
 					viz.WithFixedHeight(750),
+				)
+				if err != nil {
+					fmt.Println("Error generating HTML:", err)
+					continue
+				}
+				pngBytes, err := viz.ScreenshotHTML(
+					ctx,
+					chartHTML,
+					viz.WithWidth(675),
+					viz.WithHeight(750),
 				)
 				if err != nil {
 					fmt.Println("Error generating PNG:", err)
 					continue
 				}
+
 				dsFile := &discordgo.File{
 					Name:   "chart.png",
 					Reader: bytes.NewReader(pngBytes),
@@ -408,23 +412,16 @@ func (s *DiscordBotServer) slashCommandHandler(ds *discordgo.Session, i *discord
 						fmt.Println("Error generating JS:", err)
 						continue
 					}
-					shareImageBytes, err := s.bot.GenerateBarChartPNG(
+					id := citygraph.NewID().String()
+					featureImageURL, err := generateAndUploadFeatureImage(
 						ctx,
-						1200, 900,
+						id,
 						chartSelected.Title,
 						chartSelected.Data,
 						chartSelected.ValueIsCurrency,
-						viz.WithFixedWidth(1200),
-						viz.WithFixedHeight(1400),
 					)
 					if err != nil {
-						fmt.Println("Error generating PNG:", err)
-						continue
-					}
-					id := citygraph.NewID().String()
-					featureImageObject := id + ".png"
-					if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(shareImageBytes)); err != nil {
-						fmt.Println("Error saving chart to GCS:", err)
+						fmt.Println("Error generating feature image:", err)
 						continue
 					}
 					modPath, err := s.bot.SaveToGraph(
@@ -433,7 +430,7 @@ func (s *DiscordBotServer) slashCommandHandler(ds *discordgo.Session, i *discord
 						question,
 						renderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
 						js,
-						"https://dev.geomodul.us/dev-charts/"+featureImageObject,
+						featureImageURL,
 						i.Member.User.Username)
 					if err != nil {
 						fmt.Println("Error saving to graph:", err)
@@ -466,6 +463,26 @@ func (s *DiscordBotServer) slashCommandHandler(ds *discordgo.Session, i *discord
 		}
 	}
 
+}
+
+func generateAndUploadFeatureImage(ctx context.Context, id, title string, data []*viz.DataEntry, isCurrency bool) (string, error) {
+	chartHTML, err := viz.GenerateBarChartHTML(
+		title, data, isCurrency, true, //  yes to dark mode
+		viz.WithFixedWidth(800),
+		viz.WithFixedHeight(750),
+	)
+	if err != nil {
+		return "", fmt.Errorf("generating bar chart: %v", err)
+	}
+	pngBytes, err := viz.ScreenshotHTML(ctx, chartHTML, viz.WithWidth(800), viz.WithHeight(450), viz.WithScale(2))
+	if err != nil {
+		return "", fmt.Errorf("generating PNG: %v", err)
+	}
+	featureImageObject := id + ".png"
+	if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(pngBytes)); err != nil {
+		return "", fmt.Errorf("saving chart to GCS: %v", err)
+	}
+	return "https://dev.geomodul.us/dev-charts/" + id + ".png", nil
 }
 
 func renderBody(question, schemaThoughts, analysis, sqlQuery string) string {

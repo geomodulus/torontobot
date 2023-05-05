@@ -38,6 +38,9 @@ func UploadToGCS(ctx context.Context, objectName string, src io.Reader) error {
 		return fmt.Errorf("Writer.Close: %v", err)
 	}
 
-	log.Printf("Uploaded file to bucket: %s with object name: %s", bucketName, objectName)
+	log.Printf("Uploaded file to bucket: %s with object name: %s\nurl: https://%s\n",
+		bucketName,
+		objectName,
+		bucketName+"/"+path.Join(objectPrefix, objectName))
 	return nil
 }

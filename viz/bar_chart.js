@@ -20,8 +20,8 @@
 //}
 //  entryName = "Location",
 //  entryValueName = "Thefts",
-// baseWidth is setDynamically.
-// baseHeight is setDynamically.
+// baseWidth is set dynamically.
+// baseHeight is set dynamically.
 
 const titleSize = "1.6em",
   yLabelSize = "1.1em",
