@@ -109,7 +109,6 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 		})
 	}
 
-	//log.Printf("sending request to openai: %q\n", systemMsg.String())
 	aiResp, err := b.ai.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: Model,
 		Messages: append(msgs, openai.ChatCompletionMessage{
