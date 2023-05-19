@@ -191,7 +191,7 @@ func main() {
 				}
 				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 			}
-			//case "pie chart":
+		case "pie chart":
 			//case "scatter plot":
 
 		default:
