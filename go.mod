@@ -12,6 +12,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.15.2
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/mattn/go-sqlite3 v1.14.10
+	github.com/rolldever/go-json5 v0.0.0-20160407072000-8f6780e0ba9a
 	github.com/sashabaranov/go-openai v1.9.0
 	github.com/xuri/excelize/v2 v2.7.1
 	golang.org/x/text v0.9.0
@@ -44,6 +45,7 @@ require (
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.3 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/robertkrimen/otto v0.2.1 // indirect
 	github.com/xuri/efp v0.0.0-20220603152613-6918739fd470 // indirect
 	github.com/xuri/nfp v0.0.0-20220409054826-5e722a1d9e22 // indirect
 	go.opencensus.io v0.24.0 // indirect
@@ -57,4 +59,5 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
+	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )

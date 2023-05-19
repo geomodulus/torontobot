@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"text/template"
 	"time"
 
+	"github.com/rolldever/go-json5"
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/geomodulus/citygraph"
@@ -26,9 +28,24 @@ const (
 	RespTemp = 0.1
 )
 
+type MsgTemplate struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	tmpl    *template.Template
+}
+
+func (t *MsgTemplate) Parse() error {
+	tmpl, err := template.New("").Parse(t.Content)
+	if err != nil {
+		return fmt.Errorf("parsing template: %v", err)
+	}
+	t.tmpl = tmpl
+	return nil
+}
+
 type TorontoBot struct {
 	Hostname          string
-	sqlGenPrompt      *template.Template
+	sqlGenTemplates   []*MsgTemplate
 	chartSelectPrompt *template.Template
 	graphStore        *citygraph.Store
 	ai                *openai.Client
@@ -36,18 +53,28 @@ type TorontoBot struct {
 }
 
 func New(db *sql.DB, ai *openai.Client, store *citygraph.Store, host string) (*TorontoBot, error) {
-	sqlGenPrompt, err := template.ParseFiles("./prompts/sql_gen.txt")
+	tmplsBytes, err := os.ReadFile("./prompts/sql_gen.json")
 	if err != nil {
-		return nil, fmt.Errorf("parsing sql_gen.txt: %v", err)
+		return nil, fmt.Errorf("reading sql_gen.json: %v", err)
 	}
+
+	templates := []*MsgTemplate{}
+	if err := json5.Unmarshal(tmplsBytes, &templates); err != nil {
+		return nil, fmt.Errorf("unmarshalling sql_gen.json: %+v", err)
+	}
+	for _, t := range templates {
+		if err := t.Parse(); err != nil {
+			return nil, fmt.Errorf("parsing template: %v", err)
+		}
+	}
+
 	chartSelectPrompt, err := template.ParseFiles("./prompts/chart_select.txt")
 	if err != nil {
 		return nil, fmt.Errorf("parsing chart_select.txt: %v", err)
 	}
-
 	return &TorontoBot{
 		Hostname:          host,
-		sqlGenPrompt:      sqlGenPrompt,
+		sqlGenTemplates:   templates,
 		chartSelectPrompt: chartSelectPrompt,
 		graphStore:        store,
 		ai:                ai,
@@ -63,24 +90,32 @@ type SQLResponse struct {
 }
 
 func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResponse, error) {
-	var query bytes.Buffer
+
 	data := struct {
-		Date    string
-		Command string
+		Date string
 	}{
-		Date:    time.Now().Format("January 2, 2006"),
-		Command: question,
+		Date: time.Now().Format("January 2, 2006"),
 	}
-	if err := b.sqlGenPrompt.Execute(&query, data); err != nil {
-		return nil, fmt.Errorf("executing template: %+v", err)
+
+	var msgs []openai.ChatCompletionMessage
+	for _, t := range b.sqlGenTemplates {
+		var msg bytes.Buffer
+		if err := t.tmpl.Execute(&msg, data); err != nil {
+			return nil, fmt.Errorf("executing template: %+v", err)
+		}
+		msgs = append(msgs, openai.ChatCompletionMessage{
+			Role:    t.Role,
+			Content: msg.String(),
+		})
 	}
-	log.Printf("sending request to openai: %q\n", query.String())
+
+	//log.Printf("sending request to openai: %q\n", systemMsg.String())
 	aiResp, err := b.ai.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: Model,
-		Messages: []openai.ChatCompletionMessage{{
+		Messages: append(msgs, openai.ChatCompletionMessage{
 			Role:    openai.ChatMessageRoleUser,
-			Content: query.String(),
-		}},
+			Content: question,
+		}),
 		Temperature: RespTemp,
 	})
 	if err != nil {
@@ -89,7 +124,7 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 	log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
 
 	var resp SQLResponse
-	if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
+	if err := json5.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
 		return nil, fmt.Errorf("unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
 	}
 	return &resp, nil
