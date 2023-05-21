@@ -1,4 +1,3 @@
-
 CREATE TABLE IF NOT EXISTS operating_budget (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     program TEXT NOT NULL,

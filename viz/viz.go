@@ -2,6 +2,7 @@
 package viz
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -13,6 +14,8 @@ import (
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
+
+	"github.com/geomodulus/torontobot/storage"
 )
 
 type DataEntry struct {
@@ -303,4 +306,53 @@ func saveScreenshotPNG(htmlContent string, width, height, scale float64, buf *[]
 			return nil
 		}),
 	}
+}
+
+func GenerateAndUploadFeatureImage(ctx context.Context, id, title string, data []*DataEntry, isCurrency bool) (string, error) {
+	chartHTML, err := GenerateBarChartHTML(
+		title, data, isCurrency, true, //  yes to dark mode
+		WithFixedWidth(800),
+		WithFixedHeight(750),
+	)
+	if err != nil {
+		return "", fmt.Errorf("generating bar chart: %v", err)
+	}
+	pngBytes, err := ScreenshotHTML(ctx, chartHTML, WithWidth(800), WithHeight(450), WithScale(2))
+	if err != nil {
+		return "", fmt.Errorf("generating PNG: %v", err)
+	}
+	featureImageObject := id + ".png"
+	if err := storage.UploadToGCS(ctx, featureImageObject, bytes.NewReader(pngBytes)); err != nil {
+		return "", fmt.Errorf("saving chart to GCS: %v", err)
+	}
+	return "https://dev.geomodul.us/dev-charts/" + id + ".png", nil
+}
+
+func RenderBody(question, schemaThoughts, analysis, sqlQuery string) string {
+	return `
+				<figure>
+				  <div id="torontobot-chart"></div>
+				  <figcaption>Data from: Operating Budget Program Summary by Expenditure Category, 2014 - 2023
+				    Source: <a href="https://open.toronto.ca/dataset/budget-operating-budget-program-summary-by-expenditure-category/" target="_blank">
+				    City of Toronto Open Data</a>
+				  </figcaption>
+				</figure>
+				<p>This chart was generated using an experimental AI-powered open data query tool called 
+				<a href="https://github.com/geomodulus/torontobot" target="_blank">TorontoBot</a>.</p>
+				<p>Want to generate your own or help contribute to the project?
+				<a href="https://discord.gg/sQzxHBq8Q2" target="_blank">Join our Discord</a>.</p>
+				<ins class="geomodcau"></ins>
+				<h3>How does it work?</h3>
+				<p>First, the bot uses GPT-3 to analyze the question and generate a SQL query.</p>
+				<p>Then, the bot uses a custom SQL query engine to query a database we've filled
+				with data from the City of Toronto Open Data portal.</p>
+				<p>Finally, the bot uses a custom charting engine to generate a chart from the results.</p>
+				<h3>What does the bot think?</h3>
+				<h5 class="font-bold">Question</h5>
+				<p>` + question + `</p>
+				<h5 class="font-bold">AI thought process</h5>
+				<p><em>` + schemaThoughts + `</em></p>
+				<p><em>` + analysis + `</em></p>
+				<h5 class="font-bold">SQL Query</h5>
+				<p class="p-2 bg-map-800 text-map-200"><code>` + sqlQuery + `</code></p>`
 }
