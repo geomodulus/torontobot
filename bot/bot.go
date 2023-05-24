@@ -191,14 +191,19 @@ func (b *TorontoBot) HasGraphStore() bool {
 	return b.graphStore != nil
 }
 
-func (b *TorontoBot) SaveToGraph(ctx context.Context, id, title, body, js, featureImage, user string) (string, error) {
+func (b *TorontoBot) SaveToGraph(ctx context.Context, id, title, body, chartJS, featureImage, user string) (string, error) {
 	camera := map[string]interface{}{
 		"": map[string]interface{}{
-			"center":  map[string]float64{"lng": -79.384, "lat": 43.645},
-			"zoom":    13.8,
+			"center":  map[string]float64{"lng": -79.3838, "lat": 43.6536},
+			"zoom":    16.084,
 			"pitch":   0,
 			"bearing": -30,
-		}}
+		},
+		"md": map[string]interface{}{
+			"center": map[string]float64{"lng": -79.3835, "lat": 43.6532},
+			"zoom":   16.1558,
+		},
+	}
 	mod := &citygraph.Module{
 		ID:           id,
 		Name:         title,
@@ -223,8 +228,8 @@ func (b *TorontoBot) SaveToGraph(ctx context.Context, id, title, body, js, featu
 		return "", fmt.Errorf("writing body text: %v", err)
 	}
 
-	js += "\n\nmodule.initAdUnits();"
-	if err := b.graphStore.WriteJS(ctx, q, js); err != nil {
+	chartJS += "\n\nmodule.initAdUnits();\n"
+	if err := b.graphStore.WriteJS(ctx, q, viz.RenderGraphJS(chartJS)); err != nil {
 		return "", fmt.Errorf("writing JS: %v", err)
 	}
 

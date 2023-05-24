@@ -80,32 +80,51 @@ if (input.Title.length > 42) {
   title.text(input.Title);
 }
 
-const x = d3.scaleTime()
-  .domain(d3.extent(input.Data, function(d) { return d.Date; }))
+const x = d3
+  .scaleTime()
+  .domain(
+    d3.extent(input.Data, function (d) {
+      return d.Date;
+    })
+  )
   .range([0, width]);
-chart.append("g")
+chart
+  .append("g")
   .attr("transform", "translate(0," + height + ")")
   .call(d3.axisBottom(x));
 
-const y = d3.scaleLinear()
-  .domain([0, d3.max(input.Data, function(d) { return +d.Value; })])
+const y = d3
+  .scaleLinear()
+  .domain([
+    0,
+    d3.max(input.Data, function (d) {
+      return +d.Value;
+    }),
+  ])
   .range([height, 0]);
-chart.append("g")
-  .call(d3.axisLeft(y));
+chart.append("g").call(d3.axisLeft(y));
 
-chart.append("path")
+chart
+  .append("path")
   .datum(input.Data)
   .attr("fill", "none")
   .attr("stroke", colors[0])
   .attr("stroke-width", 1.5)
-  .attr("d", d3.line()
-    .x(function(d) { return x(d.Date) })
-    .y(function(d) { return y(d.Value) })
-    );
+  .attr(
+    "d",
+    d3
+      .line()
+      .x(function (d) {
+        return x(d.Date);
+      })
+      .y(function (d) {
+        return y(d.Value);
+      })
+  );
 
 function splitAtWordBoundary(str, limit) {
   if (str.length <= limit) {
-    return [str, ''];
+    return [str, ""];
   }
 
   const regex = new RegExp(`^.{0,${limit}}\\b`);

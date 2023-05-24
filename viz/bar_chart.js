@@ -20,12 +20,12 @@
 //}
 //  entryName = "Location",
 //  entryValueName = "Thefts",
+
+
 // baseWidth is set dynamically.
 // baseHeight is set dynamically.
 
-const titleSize = "1.6em",
-  yLabelSize = "1.1em",
-  margin = { top: 50, right: 210, bottom: 0, left: 0 },
+const margin = { top: 50, right: 210, bottom: 0, left: 0 },
   colors = [
     "#D32360",
     "#ED3242",
@@ -75,6 +75,7 @@ const title = chart
   .attr("y", (-1 * margin.top) / 2 + 2)
   .attr("text-anchor", "middle")
   .attr("fill", "currentColor")
+  .attr("class", "text-sm md:text-lg")
   .style("font-weight", "bold")
   .style("text-decoration", "Underline");
 if (input.Title.length > 42) {
@@ -113,6 +114,7 @@ bars
   .attr("y", (d) => y(dataLabel(d)) + y.bandwidth() / 2)
   .attr("x", (d) => baseWidth - 5)
   .attr("dy", ".35em")
+  .attr("class", "text-xs md:text-base")
   .attr("text-anchor", "end")
   .attr("fill", "currentColor")
   .text((d) => {
@@ -129,17 +131,15 @@ bars
   .attr("y", (d) => y(dataLabel(d)) + y.bandwidth() / 2)
   .attr("x", 3)
   .attr("dy", ".35em")
+  .attr("class", "text-xs md:text-base")
   .attr("text-anchor", "start")
   .attr("fill", "currentColor")
   .style("font-weight", "bold")
-  .each(function(d) {
+  .each(function (d) {
     if (dataLabel(d).length > 30) {
       const [firstPart, secondPart] = splitAtWordBoundary(dataLabel(d), 28);
 
-      d3.select(this)
-        .append("tspan")
-        .attr("dy", "-0.2em")
-        .text(firstPart);
+      d3.select(this).append("tspan").attr("dy", "-0.2em").text(firstPart);
 
       if (secondPart) {
         d3.select(this)
@@ -153,10 +153,9 @@ bars
     }
   });
 
-
 function splitAtWordBoundary(str, limit) {
   if (str.length <= limit) {
-    return [str, ''];
+    return [str, ""];
   }
 
   const regex = new RegExp(`^.{0,${limit}}\\b`);

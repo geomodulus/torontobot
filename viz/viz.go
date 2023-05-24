@@ -328,6 +328,45 @@ func GenerateAndUploadFeatureImage(ctx context.Context, id, title string, data [
 	return "https://dev.geomodul.us/dev-charts/" + id + ".png", nil
 }
 
+func RenderGraphJS(chartJS string) string {
+	return chartJS + `
+
+    const fc ={
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "Point",	
+            "coordinates": [-79.38385, 43.65318]
+          },
+          "properties": {
+            "name": "City Hall",
+            "symbols-layer": {
+              "icon-image": "city-of-toronto"
+            },
+            "circle-interactions-layer": {},
+            "description": "<div class=\"space-y-2 mb-2\"><h1 class=\"text-blue-600 dark:text-blue-300\">City of Toronto Open Data</h1><p>Operating Budget Program Summary by Expenditure Category, 2014 - 2023</p><p><a href=\"https://open.toronto.ca/dataset/budget-operating-budget-program-summary-by-expenditure-category/\" target=\"_blank\">View on Open Data</a></p></div>",
+			"popupAnchor": "bottom",
+			"popupOffset": [0, -100]
+          }
+        }
+      ]
+    };
+	module.displayFeatures("open-data", fc);
+
+    module.onLoad(() =>
+      module.ctx.spriteLayers.forEach((layer) => {
+        module.map.setLayerZoomRange(
+          layer.id,
+          module.map.getMinZoom(),
+          module.map.getMaxZoom()
+        );
+      })
+    );
+`
+}
+
 func RenderBody(question, schemaThoughts, analysis, sqlQuery string) string {
 	return `
 				<figure>
@@ -344,9 +383,9 @@ func RenderBody(question, schemaThoughts, analysis, sqlQuery string) string {
 				<ins class="geomodcau"></ins>
 				<h3>How does it work?</h3>
 				<p>First, the bot uses GPT-3 to analyze the question and generate a SQL query.</p>
-				<p>Then, the bot uses a custom SQL query engine to query a database we've filled
+				<p>Then, the it uses a custom SQL query engine to query a database we've filled
 				with data from the City of Toronto Open Data portal.</p>
-				<p>Finally, the bot uses a custom charting engine to generate a chart from the results.</p>
+				<p>Finally, it uses a custom charting engine to generate a chart from the results.</p>
 				<h3>What does the bot think?</h3>
 				<h5 class="font-bold">Question</h5>
 				<p>` + question + `</p>
