@@ -175,36 +175,36 @@ func main() {
 				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 			}
 
-		case "line chart":
-			if store != nil {
-				js, err := viz.GenerateLineChartJS(
-					"#torontobot-chart",
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					viz.WithBreakpointWidth())
-				if err != nil {
-					fmt.Println("Error generating JS:", err)
-					continue
-				}
-				id := citygraph.NewID().String()
-				modPath, err := tb.SaveToGraph(
-					ctx,
-					id,
-					question,
-					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
-					js,
-					"",
-					"Local User")
-				if err != nil {
-					fmt.Println("Error saving chart to graph:", err)
-					continue
-				}
-				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
-			}
-			//case "pie chart":
-			//case "scatter plot":
-
+			//		case "line chart":
+			//			if store != nil {
+			//				js, err := viz.GenerateLineChartJS(
+			//					"#torontobot-chart",
+			//					chartSelected.Title,
+			//					chartSelected.Data,
+			//					chartSelected.ValueIsCurrency,
+			//					viz.WithBreakpointWidth())
+			//				if err != nil {
+			//					fmt.Println("Error generating JS:", err)
+			//					continue
+			//				}
+			//				id := citygraph.NewID().String()
+			//				modPath, err := tb.SaveToGraph(
+			//					ctx,
+			//					id,
+			//					question,
+			//					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+			//					js,
+			//					"",
+			//					"Local User")
+			//				if err != nil {
+			//					fmt.Println("Error saving chart to graph:", err)
+			//					continue
+			//				}
+			//				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+			//			}
+			//			//case "pie chart":
+			//			//case "scatter plot":
+			//
 		default:
 			fmt.Printf("Ah you need a %s, but I can't make those yet. Soon 😈\n", chartSelected.Chart)
 		}

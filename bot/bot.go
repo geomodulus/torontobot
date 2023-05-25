@@ -22,6 +22,7 @@ import (
 
 const (
 	// Model is the openai model to query. GPT-4 is expensive, so we use GPT-3.5.
+	//Model = openai.GPT4
 	Model = openai.GPT3Dot5Turbo
 	// RespTemp is the response temperature we want from the model. Default temp is 1.0 and higher
 	// is more "creative".
@@ -53,14 +54,14 @@ type TorontoBot struct {
 }
 
 func New(db *sql.DB, ai *openai.Client, store *citygraph.Store, host string) (*TorontoBot, error) {
-	tmplsBytes, err := os.ReadFile("./prompts/sql_gen.json")
+	tmplsBytes, err := os.ReadFile("./prompts/sql_gen.json5")
 	if err != nil {
-		return nil, fmt.Errorf("reading sql_gen.json: %v", err)
+		return nil, fmt.Errorf("reading sql_gen.json5: %v", err)
 	}
 
 	templates := []*MsgTemplate{}
 	if err := json5.Unmarshal(tmplsBytes, &templates); err != nil {
-		return nil, fmt.Errorf("unmarshalling sql_gen.json: %+v", err)
+		return nil, fmt.Errorf("unmarshalling sql_gen.json5: %+v", err)
 	}
 	for _, t := range templates {
 		if err := t.Parse(); err != nil {
