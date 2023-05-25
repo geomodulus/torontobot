@@ -119,15 +119,15 @@
 "}, 
 {
     role: "user",
-    content: "What's the net budget for the cops?"
+    content: "What's the budget for the TTC?"
 },
 {
     role: "assistant", 
     content: "\
     {\
-        \"Schema\": \"The 'operating_budget' table has columns for 'program', 'entry_type', 'year', and 'amount'.\",\
-        \"Applicability\": \"We will need to filter the rows to only include the 'Toronto Police Service' program, group by year and entry_type, and sum the amounts to get the total revenue and expenses for each year. For our purposes, we will calculate the net budget for each year by subtracting the revenues from the expenses.\",\
-        \"SQL\": \"WITH police_budget AS (SELECT year, entry_type, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Toronto Police Service' GROUP BY year, entry_type), police_revenue AS (SELECT year, total_amount AS revenue FROM police_budget WHERE entry_type = 'revenue'), police_expense AS (SELECT year, total_amount AS expense FROM police_budget WHERE entry_type = 'expense') SELECT police_revenue.year, police_expense.expense - police_revenue.revenue AS net_budget FROM police_revenue JOIN police_expense ON police_revenue.year = police_expense.year;\"\
+      \"Schema\": \"The 'operating_budget' table has columns for 'program', 'entry_type', 'year', and 'amount'.\",\
+      \"Applicability\": \"We will need to filter the rows to only include the 'Toronto Transit Commission - Conventional' and 'Toronto Transit Commission - Wheel Trans' programs, group by year and entry_type, and sum the amounts to get the total revenue and expenses for each year. To be most informative, we will calculate the net budget for each year by subtracting the revenues from the expenses and return that.\",\
+      \"SQL\": \"WITH ttc_budget AS (SELECT year, entry_type, SUM(amount) AS total_amount FROM operating_budget WHERE program IN ('Toronto Transit Commission - Conventional', 'Toronto Transit Commission - Wheel Trans') GROUP BY year, entry_type), ttc_revenue AS (SELECT year, total_amount AS revenue FROM ttc_budget WHERE entry_type = 'revenue'), ttc_expense AS (SELECT year, total_amount AS expense FROM ttc_budget WHERE entry_type = 'expense') SELECT ttc_revenue.year, ttc_expense.expense - ttc_revenue.revenue AS net_budget FROM ttc_revenue JOIN ttc_expense ON ttc_revenue.year = ttc_expense.year;\"\
     }\
 "},
 {
