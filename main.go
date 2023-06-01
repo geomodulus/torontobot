@@ -129,14 +129,14 @@ func main() {
 
 		fmt.Printf("\nQuery result:\n```%s```\n", resultsTable)
 
-		chartSelected, err := tb.SelectChart(ctx, question, resultsTable)
-		if err != nil {
-			fmt.Println("Error selecting chart:", err)
-			continue
-		}
-		switch strings.ToLower(chartSelected.Chart) {
-		case "bar chart":
-			if store != nil {
+		if store != nil {
+			chartSelected, err := tb.SelectChart(ctx, question, resultsTable)
+			if err != nil {
+				fmt.Println("Error selecting chart:", err)
+				continue
+			}
+			switch strings.ToLower(chartSelected.Chart) {
+			case "bar chart":
 				js, err := viz.GenerateBarChartJS(
 					"#torontobot-chart",
 					chartSelected.Title,
@@ -149,9 +149,21 @@ func main() {
 				}
 				id := citygraph.NewID().String()
 
+				chartHTML, err := viz.GenerateBarChartHTML(
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					true, //  yes to dark mode
+					viz.WithFixedWidth(800),
+					viz.WithFixedHeight(750),
+				)
+				if err != nil {
+					continue
+				}
 				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
 					ctx,
 					id,
+					chartHTML,
 					chartSelected.Title,
 					chartSelected.Data,
 					chartSelected.ValueIsCurrency,
@@ -173,7 +185,6 @@ func main() {
 					continue
 				}
 				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
-			}
 
 			//		case "line chart":
 			//			if store != nil {
@@ -202,11 +213,60 @@ func main() {
 			//				}
 			//				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 			//			}
-			//			//case "pie chart":
-			//			//case "scatter plot":
-			//
-		default:
-			fmt.Printf("Ah you need a %s, but I can't make those yet. Soon 😈\n", chartSelected.Chart)
+			case "pie chart":
+				js, err := viz.GeneratePieChartJS(
+					"#torontobot-chart",
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithBreakpointWidth())
+				if err != nil {
+					fmt.Println("Error generating JS:", err)
+					continue
+				}
+				id := citygraph.NewID().String()
+
+				chartHTML, err := viz.GeneratePieChartHTML(
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					true, //  yes to dark mode
+					viz.WithFixedWidth(800),
+					viz.WithFixedHeight(750),
+				)
+				if err != nil {
+					continue
+				}
+				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
+					ctx,
+					id,
+					chartHTML,
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+				)
+				if err != nil {
+					fmt.Println("Error generating feature image:", err)
+					continue
+				}
+				modPath, err := tb.SaveToGraph(
+					ctx,
+					id,
+					question,
+					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+					js,
+					featureImageURL,
+					"Local User")
+				if err != nil {
+					fmt.Println("Error saving chart to graph:", err)
+					continue
+				}
+				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+				//			//case "scatter plot":
+				//
+			default:
+				fmt.Printf("Ah you need a %s, but I can't make those yet. Soon 😈\n", chartSelected.Chart)
+			}
 		}
 	}
 }

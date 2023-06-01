@@ -4,10 +4,10 @@ package viz
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -17,6 +17,9 @@ import (
 
 	"github.com/geomodulus/torontobot/storage"
 )
+
+//go:embed *
+var templates embed.FS
 
 type DataEntry struct {
 	Name  string
@@ -120,7 +123,7 @@ func GenerateBarChartJS(selector, title string, data []*DataEntry, isCurrency bo
 		opts.BaseWidthJS,
 		opts.BaseHeightJS,
 		string(inputJSON))
-	jsFile, err := os.ReadFile("./viz/bar_chart.js")
+	jsFile, err := templates.ReadFile("bar_chart.js")
 	if err != nil {
 		return "", fmt.Errorf("reading js file: %v", err)
 	}
@@ -156,7 +159,44 @@ func GenerateLineChartJS(selector, title string, data []*DataEntry, isCurrency b
 		opts.BaseWidthJS,
 		opts.BaseHeightJS,
 		string(inputJSON))
-	jsFile, err := os.ReadFile("./viz/line_chart.js")
+	jsFile, err := templates.ReadFile("line_chart.js")
+	if err != nil {
+		return "", fmt.Errorf("reading js file: %v", err)
+	}
+	return jsIntro + string(jsFile), nil
+}
+
+func GeneratePieChartJS(selector, title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
+	// Set default options
+	opts := ChartOptions{
+		BaseWidthJS:  breakpointWidth,
+		BaseHeightJS: fixedHeight(750),
+	}
+	// Apply user-provided options
+	for _, option := range options {
+		option(&opts)
+	}
+
+	input := struct {
+		Selector, Title string
+		Data            []*DataEntry
+		IsCurrency      bool
+	}{
+		Selector:   selector,
+		Title:      title,
+		Data:       data,
+		IsCurrency: isCurrency,
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return "", fmt.Errorf("marshalling data: %v", err)
+	}
+	jsIntro := fmt.Sprintf(
+		"%s\n%s\nconst input = %s;\n",
+		opts.BaseWidthJS,
+		opts.BaseHeightJS,
+		string(inputJSON))
+	jsFile, err := templates.ReadFile("pie_chart.js")
 	if err != nil {
 		return "", fmt.Errorf("reading js file: %v", err)
 	}
@@ -210,6 +250,23 @@ func GenerateBarChartHTML(title string, data []*DataEntry, isCurrency, darkMode 
 // GenerateLineChartHTML generates an bare HTML file containing only styles, fonts and.
 func GenerateLineChartHTML(title string, data []*DataEntry, isCurrency, darkMode bool, options ...ChartOption) (string, error) {
 	js, err := GenerateLineChartJS("body", title, data, isCurrency, options...)
+	if err != nil {
+		return "", fmt.Errorf("generating js: %v", err)
+	}
+	var theme string
+	if darkMode {
+		theme = "dark"
+	}
+	themedHTML, err := strings.Replace(htmlContent, "REPLACE_ME_WITH_THEME", theme, 1), nil
+	if err != nil {
+		return "", fmt.Errorf("replacing theme: %v", err)
+	}
+	return strings.Replace(themedHTML, "REPLACE_ME_WITH_CHART_JS", js, 1), nil
+}
+
+// GeneratePieChartHTML generates an bare HTML file containing only styles, fonts and.
+func GeneratePieChartHTML(title string, data []*DataEntry, isCurrency, darkMode bool, options ...ChartOption) (string, error) {
+	js, err := GeneratePieChartJS("body", title, data, isCurrency, options...)
 	if err != nil {
 		return "", fmt.Errorf("generating js: %v", err)
 	}
@@ -308,15 +365,7 @@ func saveScreenshotPNG(htmlContent string, width, height, scale float64, buf *[]
 	}
 }
 
-func GenerateAndUploadFeatureImage(ctx context.Context, id, title string, data []*DataEntry, isCurrency bool) (string, error) {
-	chartHTML, err := GenerateBarChartHTML(
-		title, data, isCurrency, true, //  yes to dark mode
-		WithFixedWidth(800),
-		WithFixedHeight(750),
-	)
-	if err != nil {
-		return "", fmt.Errorf("generating bar chart: %v", err)
-	}
+func GenerateAndUploadFeatureImage(ctx context.Context, id, title, chartHTML string, data []*DataEntry, isCurrency bool) (string, error) {
 	pngBytes, err := ScreenshotHTML(ctx, chartHTML, WithWidth(800), WithHeight(450), WithScale(2))
 	if err != nil {
 		return "", fmt.Errorf("generating PNG: %v", err)
