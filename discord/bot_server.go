@@ -399,28 +399,87 @@ func (s *BotServer) exportToWebHandler(ds *discordgo.Session, i *discordgo.Inter
 				return
 			}
 
-			js, err := viz.GenerateBarChartJS(
-				"#torontobot-chart",
-				chartSelected.Title,
-				chartSelected.Data,
-				chartSelected.ValueIsCurrency,
-				viz.WithBreakpointWidth())
-			if err != nil {
-				fmt.Println("Error generating JS:", err)
-				return
-			}
+			var js, featureImageURL string
+
 			id := citygraph.NewID().String()
-			featureImageURL, err := viz.GenerateAndUploadFeatureImage(
-				ctx,
-				id,
-				chartSelected.Title,
-				chartSelected.Data,
-				chartSelected.ValueIsCurrency,
-			)
-			if err != nil {
-				fmt.Println("Error generating feature image:", err)
-				return
+
+			switch strings.ToLower(chartSelected.Chart) {
+			case "bar chart":
+				js, err = viz.GenerateBarChartJS(
+					"#torontobot-chart",
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithBreakpointWidth())
+				if err != nil {
+					fmt.Println("Error generating JS:", err)
+					return
+				}
+
+				chartHTML, err := viz.GenerateBarChartHTML(
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					true, //  yes to dark mode
+					viz.WithFixedWidth(800),
+					viz.WithFixedHeight(750),
+				)
+				if err != nil {
+					fmt.Println("Error generating HTML:", err)
+					return
+				}
+				featureImageURL, err = viz.GenerateAndUploadFeatureImage(
+					ctx,
+					id,
+					chartHTML,
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+				)
+				if err != nil {
+					fmt.Println("Error generating feature image:", err)
+					return
+				}
+
+			case "pie chart":
+				js, err = viz.GeneratePieChartJS(
+					"#torontobot-chart",
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithBreakpointWidth())
+				if err != nil {
+					fmt.Println("Error generating JS:", err)
+					return
+				}
+				id := citygraph.NewID().String()
+
+				chartHTML, err := viz.GeneratePieChartHTML(
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					true, //  yes to dark mode
+					viz.WithFixedWidth(800),
+					viz.WithFixedHeight(750),
+				)
+				if err != nil {
+					fmt.Println("Error generating HTML:", err)
+					return
+				}
+				featureImageURL, err = viz.GenerateAndUploadFeatureImage(
+					ctx,
+					id,
+					chartHTML,
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+				)
+				if err != nil {
+					fmt.Println("Error generating feature image:", err)
+					return
+				}
 			}
+
 			modPath, err := s.bot.SaveToGraph(
 				ctx,
 				id,
