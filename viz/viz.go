@@ -8,11 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 
 	"github.com/geomodulus/torontobot/storage"
@@ -331,7 +333,24 @@ func ScreenshotHTML(ctx context.Context, srcHTML string, options ...ScreenshotOp
 func saveScreenshotPNG(htmlContent string, width, height, scale float64, buf *[]byte) chromedp.Tasks {
 	dataURL := "data:text/html;charset=utf-8;base64," + base64.StdEncoding.EncodeToString([]byte(htmlContent))
 
+	listenForLogEntry := func(ctx context.Context) error {
+		go func() {
+			chromedp.ListenTarget(ctx, func(ev interface{}) {
+				if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
+					log.Println("console log:", ev)
+				}
+				if ev, ok := ev.(*runtime.EventExceptionThrown); ok {
+					log.Println("console error:", ev)
+				}
+			})
+		}()
+		return nil
+	}
+
 	return chromedp.Tasks{
+		chromedp.ActionFunc(listenForLogEntry),
+		page.Enable(),
+		runtime.Enable(),
 		chromedp.Navigate(dataURL),
 		chromedp.WaitVisible(`svg`, chromedp.ByQuery),
 		chromedp.ActionFunc(func(ctx context.Context) error {

@@ -163,8 +163,8 @@ func main() {
 				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
 					ctx,
 					id,
-					chartHTML,
 					chartSelected.Title,
+					chartHTML,
 					chartSelected.Data,
 					chartSelected.ValueIsCurrency,
 				)
@@ -240,8 +240,8 @@ func main() {
 				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
 					ctx,
 					id,
-					chartHTML,
 					chartSelected.Title,
+					chartHTML,
 					chartSelected.Data,
 					chartSelected.ValueIsCurrency,
 				)

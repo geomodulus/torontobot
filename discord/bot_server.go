@@ -431,8 +431,8 @@ func (s *BotServer) exportToWebHandler(ds *discordgo.Session, i *discordgo.Inter
 				featureImageURL, err = viz.GenerateAndUploadFeatureImage(
 					ctx,
 					id,
-					chartHTML,
 					chartSelected.Title,
+					chartHTML,
 					chartSelected.Data,
 					chartSelected.ValueIsCurrency,
 				)
@@ -469,8 +469,8 @@ func (s *BotServer) exportToWebHandler(ds *discordgo.Session, i *discordgo.Inter
 				featureImageURL, err = viz.GenerateAndUploadFeatureImage(
 					ctx,
 					id,
-					chartHTML,
 					chartSelected.Title,
+					chartHTML,
 					chartSelected.Data,
 					chartSelected.ValueIsCurrency,
 				)
