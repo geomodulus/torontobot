@@ -66,7 +66,6 @@
     - Office of the Treasurer\
     - Parks, Forestry & Recreation\
     - Policy, Planning, Finance & Administration\
-    - Property Tax\
     - Seniors Services and Long-Term Care\
     - Shelter, Support & Housing Administration\
     - Social Development, Finance & Administration\
@@ -91,6 +90,13 @@
     - Transit Expansion\
     - Transportation Services\
     - Yonge-Dundas Square\
+    \
+    A few common request phrases users will use must translated into our data model to be useful. Here are those:\
+    - Bike Share - program: Toronto Parking Authority service: Bike Share\
+    - Road Maintenance - program: Transportation Services service: Road & Sidewalk Management\
+    - Property Tax - program: Non-Program Taxation Tax Levy\
+    \
+    The City of Toronto has a population of 2,794,356 and that can be used to calculate per-capita results.\
     \
     Please try and use the right program value or values in your query, keep in mind more than one may\
     be applicable. Here is information about the relationship of data in the table. A PROGRAM will provide a type of SERVICE that may be futher described as an ACTIVITY.\
