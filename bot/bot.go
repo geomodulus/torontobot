@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"text/template"
 	"time"
 
@@ -131,7 +132,12 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 }
 
 func (b *TorontoBot) LoadResults(sqlQuery string) (string, error) {
+	// There are some bad phrases GPT-3.5 inserts without escaping, so we need to do it here.
+	sqlQuery = strings.ReplaceAll(sqlQuery, "Children's Services", "Children''s Services")
+	sqlQuery = strings.ReplaceAll(sqlQuery, "Mayor's Office", "Mayor''s Office")
+
 	fmt.Println("running sqlQuery:", sqlQuery)
+
 	return reader.ReadDataTable(b.db, sqlQuery)
 }
 
