@@ -285,6 +285,7 @@ func GeneratePieChartHTML(title string, data []*DataEntry, isCurrency, darkMode 
 
 type ScreenshotOptions struct {
 	Width, Height, Scale float64
+	WaitForSelectors     []string
 }
 
 type ScreenshotOption func(*ScreenshotOptions)
@@ -307,6 +308,12 @@ func WithHeight(height float64) ScreenshotOption {
 	}
 }
 
+func WithWaitForSelector(selector string) ScreenshotOption {
+	return func(o *ScreenshotOptions) {
+		o.WaitForSelectors = append(o.WaitForSelectors, selector)
+	}
+}
+
 func ScreenshotHTML(ctx context.Context, srcHTML string, options ...ScreenshotOption) ([]byte, error) {
 	opts := ScreenshotOptions{
 		Width:  1280,
@@ -324,13 +331,13 @@ func ScreenshotHTML(ctx context.Context, srcHTML string, options ...ScreenshotOp
 	defer cancel()
 
 	var buf []byte
-	if err := chromedp.Run(ctx, saveScreenshotPNG(srcHTML, opts.Width, opts.Height, opts.Scale, &buf)); err != nil {
+	if err := chromedp.Run(ctx, saveScreenshotPNG(srcHTML, opts.WaitForSelectors, opts.Width, opts.Height, opts.Scale, &buf)); err != nil {
 		return []byte{}, fmt.Errorf("running chromedp: %v", err)
 	}
 	return buf, nil
 }
 
-func saveScreenshotPNG(htmlContent string, width, height, scale float64, buf *[]byte) chromedp.Tasks {
+func saveScreenshotPNG(htmlContent string, waitForSelectors []string, width, height, scale float64, buf *[]byte) chromedp.Tasks {
 	dataURL := "data:text/html;charset=utf-8;base64," + base64.StdEncoding.EncodeToString([]byte(htmlContent))
 
 	listenForLogEntry := func(ctx context.Context) error {
@@ -347,45 +354,49 @@ func saveScreenshotPNG(htmlContent string, width, height, scale float64, buf *[]
 		return nil
 	}
 
-	return chromedp.Tasks{
+	tasks := chromedp.Tasks{
 		chromedp.ActionFunc(listenForLogEntry),
 		page.Enable(),
 		runtime.Enable(),
 		chromedp.Navigate(dataURL),
-		chromedp.WaitVisible(`svg`, chromedp.ByQuery),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			// Set the viewport to match the SVG size
-			err := emulation.SetDeviceMetricsOverride(int64(width), int64(height), 1, false).
-				WithScreenOrientation(&emulation.ScreenOrientation{
-					Type:  emulation.OrientationTypePortraitPrimary,
-					Angle: 0,
-				}).
-				Do(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Capture the screenshot as PNG
-			*buf, err = page.CaptureScreenshot().
-				WithQuality(90).
-				WithClip(&page.Viewport{
-					X:      0,
-					Y:      0,
-					Width:  width,
-					Height: height,
-					Scale:  scale,
-				}).
-				Do(ctx)
-			if err != nil {
-				return err
-			}
-			return nil
-		}),
 	}
+	for _, selector := range waitForSelectors {
+		tasks = append(tasks, chromedp.WaitVisible(selector, chromedp.ByQuery))
+	}
+	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+		// Set the viewport to match the SVG size
+		err := emulation.SetDeviceMetricsOverride(int64(width), int64(height), 1, false).
+			WithScreenOrientation(&emulation.ScreenOrientation{
+				Type:  emulation.OrientationTypePortraitPrimary,
+				Angle: 0,
+			}).
+			Do(ctx)
+		if err != nil {
+			return err
+		}
+
+		// Capture the screenshot as PNG
+		*buf, err = page.CaptureScreenshot().
+			WithQuality(90).
+			WithClip(&page.Viewport{
+				X:      0,
+				Y:      0,
+				Width:  width,
+				Height: height,
+				Scale:  scale,
+			}).
+			Do(ctx)
+		if err != nil {
+			return err
+		}
+		return nil
+	}),
+	)
+	return tasks
 }
 
 func GenerateAndUploadFeatureImage(ctx context.Context, id, title, chartHTML string, data []*DataEntry, isCurrency bool) (string, error) {
-	pngBytes, err := ScreenshotHTML(ctx, chartHTML, WithWidth(800), WithHeight(450), WithScale(2))
+	pngBytes, err := ScreenshotHTML(ctx, chartHTML, WithWidth(800), WithHeight(450), WithScale(2), WithWaitForSelector("svg"))
 	if err != nil {
 		return "", fmt.Errorf("generating PNG: %v", err)
 	}
