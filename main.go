@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -136,7 +137,7 @@ func main() {
 				continue
 			}
 			switch strings.ToLower(chartSelected.Chart) {
-			case "bar chart":
+			case "bar":
 				js, err := viz.GenerateBarChartJS(
 					"#torontobot-chart",
 					chartSelected.Title,
@@ -186,34 +187,87 @@ func main() {
 				}
 				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 
-			//		case "line chart":
-			//			if store != nil {
-			//				js, err := viz.GenerateLineChartJS(
-			//					"#torontobot-chart",
-			//					chartSelected.Title,
-			//					chartSelected.Data,
-			//					chartSelected.ValueIsCurrency,
-			//					viz.WithBreakpointWidth())
-			//				if err != nil {
-			//					fmt.Println("Error generating JS:", err)
-			//					continue
-			//				}
-			//				id := citygraph.NewID().String()
-			//				modPath, err := tb.SaveToGraph(
-			//					ctx,
-			//					id,
-			//					question,
-			//					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
-			//					js,
-			//					"",
-			//					"Local User")
-			//				if err != nil {
-			//					fmt.Println("Error saving chart to graph:", err)
-			//					continue
-			//				}
-			//				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
-			//			}
-			case "pie chart":
+			case "stacked-bar":
+				js, err := viz.GenerateStackedBarChartJS(
+					"#torontobot-chart",
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithBreakpointWidth())
+				if err != nil {
+					fmt.Println("Error generating JS:", err)
+					continue
+				}
+				id := citygraph.NewID().String()
+
+				chartHTML, err := viz.GenerateBarChartHTML(
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					true, //  yes to dark mode
+					viz.WithFixedWidth(800),
+					viz.WithFixedHeight(750),
+				)
+				if err != nil {
+					continue
+				}
+				if err := os.WriteFile("../mainapp/static/chart.html", []byte(chartHTML), 0644); err != nil {
+					fmt.Println("Error writing chart HTML:", err)
+					continue
+				}
+				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
+					ctx,
+					id,
+					chartSelected.Title,
+					chartHTML,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+				)
+				if err != nil {
+					fmt.Println("Error generating feature image:", err)
+					continue
+				}
+				modPath, err := tb.SaveToGraph(
+					ctx,
+					id,
+					question,
+					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+					js,
+					featureImageURL,
+					"Local User")
+				if err != nil {
+					fmt.Println("Error saving chart to graph:", err)
+					continue
+				}
+				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+
+					case "line":
+							js, err := viz.GenerateLineChartJS(
+								"#torontobot-chart",
+								chartSelected.Title,
+								chartSelected.Data,
+								chartSelected.ValueIsCurrency,
+								viz.WithBreakpointWidth())
+							if err != nil {
+								fmt.Println("Error generating JS:", err)
+								continue
+							}
+							id := citygraph.NewID().String()
+							modPath, err := tb.SaveToGraph(
+								ctx,
+								id,
+								question,
+								viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+								js,
+								"",
+								"Local User")
+							if err != nil {
+								fmt.Println("Error saving chart to graph:", err)
+								continue
+							}
+							fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+
+			case "pie":
 				js, err := viz.GeneratePieChartJS(
 					"#torontobot-chart",
 					chartSelected.Title,

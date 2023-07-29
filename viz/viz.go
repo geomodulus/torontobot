@@ -132,6 +132,43 @@ func GenerateBarChartJS(selector, title string, data []*DataEntry, isCurrency bo
 	return jsIntro + string(jsFile), nil
 }
 
+func GenerateStackedBarChartJS(selector, title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
+	// Set default options
+	opts := ChartOptions{
+		BaseWidthJS:  breakpointWidth,
+		BaseHeightJS: fixedHeight(750),
+	}
+	// Apply user-provided options
+	for _, option := range options {
+		option(&opts)
+	}
+
+	input := struct {
+		Selector, Title string
+		Data            []*DataEntry
+		IsCurrency      bool
+	}{
+		Selector:   selector,
+		Title:      title,
+		Data:       data,
+		IsCurrency: isCurrency,
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return "", fmt.Errorf("marshalling data: %v", err)
+	}
+	jsIntro := fmt.Sprintf(
+		"%s\n%s\nconst input = %s;\n",
+		opts.BaseWidthJS,
+		opts.BaseHeightJS,
+		string(inputJSON))
+	jsFile, err := templates.ReadFile("stacked_bar_chart.js")
+	if err != nil {
+		return "", fmt.Errorf("reading js file: %v", err)
+	}
+	return jsIntro + string(jsFile), nil
+}
+
 func GenerateLineChartJS(selector, title string, data []*DataEntry, isCurrency bool, options ...ChartOption) (string, error) {
 	// Set default options
 	opts := ChartOptions{

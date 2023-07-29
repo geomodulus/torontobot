@@ -5,7 +5,7 @@ go 1.18
 require (
 	cloud.google.com/go/storage v1.30.1
 	github.com/bwmarrin/discordgo v0.27.1
-	github.com/chromedp/cdproto v0.0.0-20230618214118-0b1fcf891e26
+	github.com/chromedp/cdproto v0.0.0-20230722233645-dbf72f61037f
 	github.com/chromedp/chromedp v0.9.1
 	github.com/chzyer/readline v1.5.1
 	github.com/geomodulus/citygraph v0.0.0-20230428181640-b03b6d4740b4
@@ -13,7 +13,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/rolldever/go-json5 v0.0.0-20160407072000-8f6780e0ba9a
-	github.com/sashabaranov/go-openai v1.9.0
+	github.com/sashabaranov/go-openai v1.14.1
 	github.com/xuri/excelize/v2 v2.7.1
 	golang.org/x/text v0.9.0
 	google.golang.org/grpc v1.55.0
@@ -56,7 +56,7 @@ require (
 	golang.org/x/crypto v0.9.0 // indirect
 	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
-	golang.org/x/sys v0.9.0 // indirect
+	golang.org/x/sys v0.10.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.123.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

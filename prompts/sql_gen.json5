@@ -1,4 +1,5 @@
-[{
+[
+  {
     role: "system",
     content: "Today's date is {{.Date}}. You are an expert and empathetic database engineer that generates correct read-only sqlite3 queries. \
     \
@@ -110,75 +111,73 @@
     \
     Use CTE format for computing subqueries.\
     \
-    Provide a properly formatted JSON object and only a JSON object with the following information. Ensure all strings are surrounded by double quotes, and escape any special characters so the JSON can be parsed correctly. If applicable, provide the SQL query as a single line of text without any line breaks. \
+    Return your response by calling the sql_analysis function. If you cannot determine a query to run, reply with the\
+    reason for that.\
     \
-        {\
-            \"Schema\": \"<1 to 2 sentences about the columns above to use>\",\
-            \"Applicability\": \"<1 to 2 sentences about which columns and enums are relevant, or which ones are missing>\",\
-            \"SQL\": \"<your single-line SQL query. Remeber to escape any special characters>\"\
-        }\
-        \
-        However, if the tables don't contain all the required data (e.g. a column isn't there or there isn't enough data to know what program values to use in the query), instead return a JSON object with just: \
-        \
-        {\
-            \"Schema\": \"<1 to 2 sentences about the columns above to use>\",\
-            \"Applicability\": \"<1 to 2 sentences about which columns and enums are relevant, or which ones are missing>\",\
-            \"MissingData\": \"<1 to 2 sentences about what data is missing>\"\
-        }\
-    However, if a query can be close enough to the intent of the question/command, generate the SQL that gets it instead of returning MissingData.\
-    Do not include any newline characters in your SQL query, merge it all onto one line.\
+    However, if a query is close enough to the intent of the question/command go ahead and call sql_analysis with that\
+    query\
     \
-"}, 
-{
+    Remember: do not include any newline characters in your SQL query, merge it all onto one line.\
+",
+  },
+  {
     role: "user",
-    content: "What's the budget for the TTC?"
-},
-{
-    role: "assistant", 
-    content: "\
-    {\
-      \"Schema\": \"The 'operating_budget' table has columns for 'program', 'entry_type', 'year', and 'amount'.\",\
-      \"Applicability\": \"We will need to filter the rows to only include the 'Toronto Transit Commission - Conventional' and 'Toronto Transit Commission - Wheel Trans' programs, group by year and entry_type, and sum the amounts to get the total revenue and expenses for each year. To be most informative, we will calculate the net budget for each year by subtracting the revenues from the expenses and return that.\",\
-      \"SQL\": \"WITH ttc_budget AS (SELECT year, entry_type, SUM(amount) AS total_amount FROM operating_budget WHERE program IN ('Toronto Transit Commission - Conventional', 'Toronto Transit Commission - Wheel Trans') GROUP BY year, entry_type), ttc_revenue AS (SELECT year, total_amount AS revenue FROM ttc_budget WHERE entry_type = 'revenue'), ttc_expense AS (SELECT year, total_amount AS expense FROM ttc_budget WHERE entry_type = 'expense') SELECT ttc_revenue.year, ttc_expense.expense - ttc_revenue.revenue AS net_budget FROM ttc_revenue JOIN ttc_expense ON ttc_revenue.year = ttc_expense.year;\"\
-    }\
-"},
-{
-  role: "user",
-  content: "show me the cost of the Toronto Police Service compared to the cost of financing the mayor's office, by year",
-},
-{
-  role: "assistant",
-  content: "\
-  {\
-    \"Schema\": \"The 'operating_budget' table has columns for 'program', 'entry_type', 'year', and 'amount'.\",\
-    \"Applicability\": \"We will need to filter the rows to only include the 'Toronto Police Service' and 'Mayor's Office' programs, group by year and entry_type, and sum the amounts to get the total expenses for each program in each year. We will then need to join the two subqueries on year to compare the expenses between the two programs.\",\
-    \"SQL\": \"WITH police_expenses AS (SELECT year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Toronto Police Service' AND entry_type = 'expense' GROUP BY year), mayor_expenses AS (SELECT year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Mayor\'s Office' AND entry_type = 'expense' GROUP BY year) SELECT police_expenses.year, police_expenses.total_amount AS police_expenses, mayor_expenses.total_amount AS mayor_expenses FROM police_expenses JOIN mayor_expenses ON police_expenses.year = mayor_expenses.year;\"\
-  }\
-"},
-{
-    role: "user",
-    content: "What programs have had their budget cut the most in the last two years?"
-},
-{
-    role: "assistant", 
-    content: "\
-    {\
-        \"Schema\": \"The 'operating_budget' table has columns for 'program', 'year', and 'amount'.\",\
-        \"Applicability\": \"We will need to filter the rows to only include the last two years, group by program, and sum the amounts to get the total budget for each program. We will then need to compare the total budget for each program between the two years to determine which programs had the largest budget cuts.\",\
-        \"SQL\": \"WITH last_two_years AS (SELECT * FROM operating_budget WHERE year >= strftime('%Y', 'now', '-2 years')), total_budgets AS (SELECT program, SUM(amount) AS total_amount FROM last_two_years GROUP BY program) SELECT program, total_amount FROM total_budgets WHERE program NOT IN ('Non-Program Expenditures', 'Non-Program Revenues', 'Non-Program Taxation Tax Levy') ORDER BY total_amount ASC LIMIT 5;\",\
-    }\
-"},
-{
-    role: "user", 
-    content: "How does the budget for fire services compare to the paramedic services?"
-},
-{
+    content: "What's the budget for the TTC?",
+  },
+  {
     role: "assistant",
-    content: "\
-    {\
-        \"Schema\": \"The 'operating_budget' table has columns for 'program', 'service', 'entry_type', 'year', and 'amount'.\",\
-        \"Applicability\": \"We will need to filter the rows to only include the 'Fire Services' and 'Toronto Paramedic Services' programs, group by service and year, and sum the amounts to get the total budget for each service in each year. We will then need to join the two subqueries on year and service to compare the budgets between the two services.\",\
-        \"SQL\": \"WITH fire_services AS (SELECT service, year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Fire Services' AND entry_type = 'expense' GROUP BY service, year), paramedic_services AS (SELECT service, year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Toronto Paramedic Services' AND entry_type = 'expense' GROUP BY service, year) SELECT fire_services.year, fire_services.service, fire_services.total_amount AS fire_services_budget, paramedic_services.total_amount AS paramedic_services_budget FROM fire_services JOIN paramedic_services ON fire_services.year = paramedic_services.year AND fire_services.service = paramedic_services.service;\"\
-    }\
-"},
+    function_call: {
+      name: "sql_analysis",
+      arguments: "{\
+        \"schema\": \"The 'operating_budget' table has columns for 'program', 'entry_type', 'year', and 'amount'.\",\
+        \"applicability\": \"We will need to filter the rows to only include the 'Toronto Transit Commission - Conventional' and 'Toronto Transit Commission - Wheel Trans' programs, group by year and entry_type, and sum the amounts to get the total revenue and expenses for each year. To be most informative, we will calculate the net budget for each year by subtracting the revenues from the expenses and return that.\",\
+        \"sql\": \"WITH ttc_budget AS (SELECT year, entry_type, SUM(amount) AS total_amount FROM operating_budget WHERE program IN ('Toronto Transit Commission - Conventional', 'Toronto Transit Commission - Wheel Trans') GROUP BY year, entry_type), ttc_revenue AS (SELECT year, total_amount AS revenue FROM ttc_budget WHERE entry_type = 'revenue'), ttc_expense AS (SELECT year, total_amount AS expense FROM ttc_budget WHERE entry_type = 'expense') SELECT ttc_revenue.year, ttc_expense.expense - ttc_revenue.revenue AS net_budget FROM ttc_revenue JOIN ttc_expense ON ttc_revenue.year = ttc_expense.year;\",\
+      }",
+    },
+  },
+  {
+    role: "user",
+    content: "show me the cost of the Toronto Police Service compared to the cost of financing the mayor's office, by year",
+  },
+  {
+    role: "assistant",
+    function_call: {
+      name: "sql_analysis",
+      arguments: "{\
+        \"schema\": \"The 'operating_budget' table has columns for 'program', 'entry_type', 'year', and 'amount'.\",\
+        \"applicability\": \"We will need to filter the rows to only include the 'Toronto Police Service' and 'Mayor's Office' programs, group by year and entry_type, and sum the amounts to get the total expenses for each program in each year. We will then need to join the two subqueries on year to compare the expenses between the two programs.\",\
+        \"sql\": \"WITH police_expenses AS (SELECT year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Toronto Police Service' AND entry_type = 'expense' GROUP BY year), mayor_expenses AS (SELECT year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Mayor's Office' AND entry_type = 'expense' GROUP BY year) SELECT police_expenses.year, police_expenses.total_amount AS police_expenses, mayor_expenses.total_amount AS mayor_expenses FROM police_expenses JOIN mayor_expenses ON police_expenses.year = mayor_expenses.year;\",\
+      }",
+    },
+  },
+  {
+    role: "user",
+    content: "What programs have had their budget cut the most in the last two years?",
+  },
+  {
+    role: "assistant",
+    function_call: {
+      name: "sql_analysis",
+      arguments: "{\
+        \"schema\": \"The 'operating_budget' table has columns for 'program', 'year', and 'amount'.\",\
+        \"applicability\": \"We will need to filter the rows to only include the last two years, group by program, and sum the amounts to get the total budget for each program. We will then need to compare the total budget for each program between the two years to determine which programs had the largest budget cuts.\",\
+        \"sql\": \"WITH last_two_years AS (SELECT * FROM operating_budget WHERE year >= strftime('%Y', 'now', '-2 years')), total_budgets AS (SELECT program, SUM(amount) AS total_amount FROM last_two_years GROUP BY program) SELECT program, total_amount FROM total_budgets WHERE program NOT IN ('Non-Program Expenditures', 'Non-Program Revenues', 'Non-Program Taxation Tax Levy') ORDER BY total_amount ASC LIMIT 5;\",\
+      }",
+    },
+  },
+  {
+    role: "user",
+    content: "How does the budget for fire services compare to the paramedic services?",
+  },
+  {
+    role: "assistant",
+    function_call: {
+      name: "sql_analysis",
+      arguments: "{\
+        \"schema\": \"The 'operating_budget' table has columns for 'program', 'service', 'entry_type', 'year', and 'amount'.\",\
+        \"applicability\": \"We will need to filter the rows to only include the 'Fire Services' and 'Toronto Paramedic Services' programs, group by service and year, and sum the amounts to get the total budget for each service in each year. We will then need to join the two subqueries on year and service to compare the budgets between the two services.\",\
+        \"sql\": \"WITH fire_services AS (SELECT service, year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Fire Services' AND entry_type = 'expense' GROUP BY service, year), paramedic_services AS (SELECT service, year, SUM(amount) AS total_amount FROM operating_budget WHERE program = 'Toronto Paramedic Services' AND entry_type = 'expense' GROUP BY service, year) SELECT fire_services.year, fire_services.service, fire_services.total_amount AS fire_services_budget, paramedic_services.total_amount AS paramedic_services_budget FROM fire_services JOIN paramedic_services ON fire_services.year = paramedic_services.year AND fire_services.service = paramedic_services.service;\",\
+      }",
+    },
+  },
 ]

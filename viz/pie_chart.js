@@ -1,30 +1,30 @@
 //const input = {
 //  Selector: "body",
 //  Data: [
- // {
- //   Name: "Parking Lots",
- //   Value: 3476,
- // },
- // {
- //   Name: "House",
- //   Value: 1584,
- // },
- // {
- //   Name: "Apartment",
- //   Value: 1324,
- // },
- // {
- //   Name: "Streets/Roads",
- //   Value: 1154,
- // },
- // {
- //   Name: "Other",
- //   Value: 888 + 26 + 19 + 137,
- // },
- // {
- //   Name: "Commercial",
- //   Value: 575,
- // },
+// {
+//   Name: "Parking Lots",
+//   Value: 3476,
+// },
+// {
+//   Name: "House",
+//   Value: 1584,
+// },
+// {
+//   Name: "Apartment",
+//   Value: 1324,
+// },
+// {
+//   Name: "Streets/Roads",
+//   Value: 1154,
+// },
+// {
+//   Name: "Other",
+//   Value: 888 + 26 + 19 + 137,
+// },
+// {
+//   Name: "Commercial",
+//   Value: 575,
+// },
 //  ],
 //  Title: "Library Spending By Year, 2014-2022";
 //},
@@ -67,7 +67,7 @@ const title = svg
   .attr("text-anchor", "middle")
   .attr("fill", "currentColor")
   .attr("class", "text-base md:text-lg")
-  .style("text-decoration", "Underline")
+  .style("text-decoration", "Underline");
 
 if (input.Title.length > 42) {
   const parts = splitAtWordBoundary(input.Title, 40);
@@ -130,39 +130,38 @@ arc
     return color(d.data.Value);
   });
 
-  const totalCount = d3.sum(input.Data, (d) => d.Value);
+const totalCount = d3.sum(input.Data, (d) => d.Value);
 
-  const sliceLabel = arc
-    .append("text")
-    .attr("transform", function (d) {
-      return "translate(" + label.centroid(d) + ")";
-    })
-    //.attr("dy", "0.35em")
-    .attr("fill", "currentColor")
-    .style("alignment-baseline", "middle")
-    .style("text-anchor", "middle");
-  sliceLabel
-    .append("tspan")
-    .style("paint-order", "stroke")
-    .attr("class", "text-base md:text-lg stroke-gray-100 dark:stroke-gray-800")
-    .style("stroke-width", "0.1em")
-    .attr("dy", 0)
-    .attr("x", 0)
-    .text(function (d) {
-      return d.data.Name;
-    });
-  sliceLabel
-    .append("tspan")
-    .attr("x", 0)
-    .attr("dy", "1.2em")
-    .style("paint-order", "stroke")
-    .attr("class", "text-xs md:text-sm stroke-gray-100 dark:stroke-gray-800")
-    .style("stroke-width", "0.1em")
-    .text(function (d) {
-      const percentage = ((d.data.Value / totalCount) * 100).toFixed(1);
-      return `${percentage}%`;
-    });
-
+const sliceLabel = arc
+  .append("text")
+  .attr("transform", function (d) {
+    return "translate(" + label.centroid(d) + ")";
+  })
+  //.attr("dy", "0.35em")
+  .attr("fill", "currentColor")
+  .style("alignment-baseline", "middle")
+  .style("text-anchor", "middle");
+sliceLabel
+  .append("tspan")
+  .style("paint-order", "stroke")
+  .attr("class", "text-base md:text-lg stroke-gray-100 dark:stroke-gray-800")
+  .style("stroke-width", "0.1em")
+  .attr("dy", 0)
+  .attr("x", 0)
+  .text(function (d) {
+    return d.data.Name;
+  });
+sliceLabel
+  .append("tspan")
+  .attr("x", 0)
+  .attr("dy", "1.2em")
+  .style("paint-order", "stroke")
+  .attr("class", "text-xs md:text-sm stroke-gray-100 dark:stroke-gray-800")
+  .style("stroke-width", "0.1em")
+  .text(function (d) {
+    const percentage = ((d.data.Value / totalCount) * 100).toFixed(1);
+    return `${percentage}%`;
+  });
 
 // Add total
 //const total = chart
@@ -207,5 +206,3 @@ function splitAtWordBoundary(str, limit) {
 
   return [firstPart, secondPart];
 }
-
-

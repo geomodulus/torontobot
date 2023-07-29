@@ -18,6 +18,7 @@ import (
 
 	"github.com/geomodulus/citygraph"
 	"github.com/geomodulus/torontobot/db/reader"
+	"github.com/geomodulus/torontobot/jsonschema"
 	"github.com/geomodulus/torontobot/viz"
 )
 
@@ -31,12 +32,19 @@ const (
 )
 
 type MsgTemplate struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-	tmpl    *template.Template
+	Role         string               `json:"role"`
+	Name         string               `json:"name"`
+	Content      string               `json:"content"`
+	FunctionCall *openai.FunctionCall `json:"function_call"`
+
+	tmpl *template.Template
 }
 
 func (t *MsgTemplate) Parse() error {
+	if t.Content == "" {
+		return nil
+	}
+
 	tmpl, err := template.New("").Parse(t.Content)
 	if err != nil {
 		return fmt.Errorf("parsing template: %v", err)
@@ -85,10 +93,33 @@ func New(db *sql.DB, ai *openai.Client, store *citygraph.Store, host string) (*T
 }
 
 type SQLResponse struct {
-	Schema        string
-	Applicability string
-	SQL           string
-	MissingData   string
+	Schema        string `json:"schema"`
+	Applicability string `json:"applicability"`
+	SQL           string `json:"sql"`
+	MissingData   string `json:"missing_data"`
+}
+
+var SQLAnalysisFunction = openai.FunctionDefinition{
+	Name:        "sql_analysis",
+	Description: "Accepts SQL query analysis derived from user queries.",
+	Parameters: jsonschema.Definition{
+		Type: jsonschema.Object,
+		Properties: map[string]*jsonschema.Definition{
+			"schema": {
+				Type:        jsonschema.String,
+				Description: "1 to 2 sentences about which columns from the schema to use.",
+			},
+			"applicability": {
+				Type:        jsonschema.String,
+				Description: "1 to 2 sentences about which columns and enums are relevant, or which ones are missing.",
+			},
+			"sql": {
+				Type:        jsonschema.String,
+				Description: "A single-line SQL query to run. Remember to escape any special characters",
+			},
+		},
+		Required: []string{"schema", "applicability", "sql"},
+	},
 }
 
 func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResponse, error) {
@@ -102,12 +133,15 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 	var msgs []openai.ChatCompletionMessage
 	for _, t := range b.sqlGenTemplates {
 		var msg bytes.Buffer
-		if err := t.tmpl.Execute(&msg, data); err != nil {
-			return nil, fmt.Errorf("executing template: %+v", err)
+		if t.tmpl != nil {
+			if err := t.tmpl.Execute(&msg, data); err != nil {
+				return nil, fmt.Errorf("executing template: %+v", err)
+			}
 		}
 		msgs = append(msgs, openai.ChatCompletionMessage{
-			Role:    t.Role,
-			Content: msg.String(),
+			Role:         t.Role,
+			Content:      msg.String(),
+			FunctionCall: t.FunctionCall,
 		})
 	}
 
@@ -118,16 +152,27 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 			Content: question,
 		}),
 		Temperature: RespTemp,
+		Functions: []openai.FunctionDefinition{
+			SQLAnalysisFunction,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateChatCompletion: %v", err)
 	}
-	log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
 
 	var resp SQLResponse
-	if err := json5.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
-		return nil, fmt.Errorf("unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
+	if fc := aiResp.Choices[0].Message.FunctionCall; fc != nil {
+		log.Printf("Got function call: %s(%q)\n", fc.Name, fc.Arguments)
+
+		if err := json5.Unmarshal([]byte(fc.Arguments), &resp); err != nil {
+			return nil, fmt.Errorf("unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
+		}
+		// handle function call
+	} else {
+		resp.MissingData = aiResp.Choices[0].Message.Content
+		log.Printf("Got reply text: %s\n", resp.MissingData)
 	}
+
 	return &resp, nil
 }
 
@@ -142,11 +187,73 @@ func (b *TorontoBot) LoadResults(sqlQuery string) (string, error) {
 }
 
 type ChartSelectResponse struct {
-	Chart           string
-	Title           string
-	Data            []*viz.DataEntry
-	ValueIsCurrency bool
+	Chart           string           `json:"type"`
+	Title           string           `json:"title"`
+	Data            []*viz.DataEntry `json:"data"`
+	ValueIsCurrency bool             `json:"is_currency"`
 }
+
+var ChartSelectFunction = openai.FunctionDefinition{
+	Name:        "select_chart",
+	Description: "Selects a chart type and foramts data to be used in the chart.",
+	Parameters: jsonschema.Definition{
+		Type: jsonschema.Object,
+		Properties: map[string]*jsonschema.Definition{
+			"type": {
+				Type:        jsonschema.String,
+				Description: "Selected type of chart for this data.",
+				Enum:        []string{"bar", "stacked-bar", "line", "pie"},
+			},
+			"title": {
+				Type:        jsonschema.String,
+				Description: "Title for the chart.",
+			},
+			"data": {
+				Type: jsonschema.Array,
+				Items: &jsonschema.Definition{
+					Type: jsonschema.Object,
+					Properties: map[string]*jsonschema.Definition{
+						"name": {
+							Type:        jsonschema.String,
+							Description: "Name of the data entry.",
+						},
+						"date": {
+							Type:        jsonschema.Number,
+							Description: "Year of the data entry.",
+						},
+						"value": {
+							Type:        jsonschema.Number,
+							Description: "Value of the data entry.",
+						},
+					},
+					Required: []string{"value"},
+				},
+			},
+			"is_currency": {
+				Type:        jsonschema.Boolean,
+				Description: "Whether the data value represents money/currency amount or not.",
+			},
+		},
+		Required: []string{"type", "title", "data", "is_currency"},
+	},
+}
+
+//Example response:
+//{
+//  "Chart": "stacked bar chart",
+//  "Title": TTC vs Police Budgets",
+//  "Keys": ["TTC", "Police"],
+//  "Data": [{
+//    "Date": 2014,
+//    "TTC": <item-number>,
+//    "Police": <item-number>
+//  }, {
+//    "Date": 2015,
+//    "TTC": <item-number>,
+//    "Police": <item-number>
+//  }],
+//  "ValueIsCurrency": true
+//}
 
 type ChartType int
 
@@ -178,15 +285,28 @@ func (b *TorontoBot) SelectChart(ctx context.Context, question, dataTable string
 			Content: query.String(),
 		}},
 		Temperature: RespTemp,
+		Functions: []openai.FunctionDefinition{
+			ChartSelectFunction,
+		},
+		FunctionCall: map[string]string{
+			"name": ChartSelectFunction.Name,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateChatCompletion: %v", err)
 	}
 	log.Printf("Got reply: %s\n", aiResp.Choices[0].Message.Content)
 
+	fc := aiResp.Choices[0].Message.FunctionCall
+	if fc == nil {
+		return nil, fmt.Errorf("expected function call in response")
+	}
+	if fc.Name != ChartSelectFunction.Name {
+		return nil, fmt.Errorf("expected function call %q, got %q", ChartSelectFunction.Name, fc.Name)
+	}
 	var resp ChartSelectResponse
-	if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &resp); err != nil {
-		return nil, fmt.Errorf("unmarshalling response %q: %v", aiResp.Choices[0].Message.Content, err)
+	if err := json.Unmarshal([]byte(fc.Arguments), &resp); err != nil {
+		return nil, fmt.Errorf("unmarshaling function call: %v", err)
 	}
 
 	fmt.Printf("%+v\n", resp)

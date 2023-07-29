@@ -287,7 +287,7 @@ func (s *BotServer) generatePNGHandler(ds *discordgo.Session, i *discordgo.Inter
 				return
 			}
 			switch strings.ToLower(chartSelected.Chart) {
-			case "bar chart":
+			case "bar":
 				chartHTML, err := viz.GenerateBarChartHTML(
 					chartSelected.Title,
 					chartSelected.Data,
@@ -325,7 +325,7 @@ func (s *BotServer) generatePNGHandler(ds *discordgo.Session, i *discordgo.Inter
 				}
 
 			default:
-				out := fmt.Sprintf("Ah you need a %s, but I can't make those yet. Soon 😈", chartSelected.Chart)
+				out := fmt.Sprintf("Ah you need a %s chart, but I can't make those yet. Soon 😈", chartSelected.Chart)
 				if _, err := ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 					Content: &out,
 				}); err != nil {
