@@ -11,7 +11,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 
-func ReadDataTable(db *sql.DB, sqlQuery string) (string, error) {
+func ReadDataTable(db *sql.DB, sqlQuery string, isCurrency bool) (string, error) {
 	p := message.NewPrinter(language.English)
 
 	rows, err := db.Query(sqlQuery)
@@ -51,13 +51,24 @@ func ReadDataTable(db *sql.DB, sqlQuery string) (string, error) {
 			return "", fmt.Errorf("error scanning row: %v", err)
 		}
 
+		var prefix string
+		if isCurrency {
+			prefix = "$"
+		}
 		row := make(table.Row, columnCount)
 		for i, column := range columns {
-			if columnTypes[i].DatabaseTypeName() == "REAL" || columnTypes[i].DatabaseTypeName() == "" {
-				row[i] = p.Sprintf("$%.2f", column)
-				continue
+			switch v := column.(type) {
+			case int, int32, int64:
+				row[i] = p.Sprintf("%s%d", prefix, v)
+			case float32, float64:
+				row[i] = p.Sprintf("%s%.2f", prefix, v)
+			case string:
+				row[i] = v
+			case nil:
+				row[i] = "<no data found>"
+			default:
+				return "", fmt.Errorf("do not handle type of: %+v", v)
 			}
-			row[i] = p.Sprintf("%+v", column)
 		}
 		tw.AppendRow(row)
 	}

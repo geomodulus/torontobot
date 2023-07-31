@@ -207,7 +207,6 @@ func (b *TorontoBot) SelectTable(ctx context.Context, question string) (*DataTab
 		return nil, fmt.Errorf("searching index: %v", err)
 	}
 	selected := b.tables[(*searchResults)[0].ID]
-	fmt.Printf("Selected: %+v\n", b.tables[(*searchResults)[0].ID])
 	for _, searchResult := range *searchResults {
 		fmt.Printf("id: %v, distance: %f\n", searchResult.ID, searchResult.Distance)
 	}
@@ -218,6 +217,7 @@ type SQLResponse struct {
 	Schema        string `json:"schema"`
 	Applicability string `json:"applicability"`
 	SQL           string `json:"sql"`
+	IsCurrency    bool   `json:"result_is_currency"`
 	MissingData   string `json:"missing_data"`
 }
 
@@ -239,8 +239,12 @@ var SQLAnalysisFunction = openai.FunctionDefinition{
 				Type:        jsonschema.String,
 				Description: "A single-line SQL query to run. Remember to escape any special characters",
 			},
+			"result_is_currency": {
+				Type:        jsonschema.Boolean,
+				Description: "Whether the result of the query is a currency value.",
+			},
 		},
-		Required: []string{"schema", "applicability", "sql"},
+		Required: []string{"schema", "applicability", "sql", "result_is_currency"},
 	},
 }
 
@@ -292,10 +296,10 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, table *DataTable, question
 	return &resp, nil
 }
 
-func (b *TorontoBot) LoadResults(sqlQuery string) (string, error) {
+func (b *TorontoBot) LoadResults(sqlQuery string, isCurrency bool) (string, error) {
 	sqlQuery = sanitizeQuery(sqlQuery)
 	fmt.Println("running sqlQuery:", sqlQuery)
-	return reader.ReadDataTable(b.db, sqlQuery)
+	return reader.ReadDataTable(b.db, sqlQuery, isCurrency)
 }
 
 type ChartSelectResponse struct {

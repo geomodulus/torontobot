@@ -87,7 +87,7 @@ func main() {
 			fmt.Println("Error selecting table:", err)
 			continue
 		}
-		fmt.Printf("Selected table: %+v\n", table)
+		fmt.Printf("Selected table: %q\n", table.Name)
 		sqlAnalysis, err := tb.SQLAnalysis(ctx, table, question)
 		if err != nil {
 			fmt.Println("Error analyzing SQL query:", err)
@@ -108,7 +108,7 @@ func main() {
 			sqlAnalysis.Applicability,
 			sqlAnalysis.SQL)
 
-		resultsTable, err := tb.LoadResults(sqlAnalysis.SQL)
+		resultsTable, err := tb.LoadResults(sqlAnalysis.SQL, sqlAnalysis.IsCurrency)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				fmt.Println("No results found.")

@@ -145,7 +145,7 @@ func (s *BotServer) slashCommandHandler(ds *discordgo.Session, i *discordgo.Inte
 				log.Println("Error editing response:", err)
 			}
 
-			resultsTable, err := s.bot.LoadResults(sqlAnalysis.SQL)
+			resultsTable, err := s.bot.LoadResults(sqlAnalysis.SQL, sqlAnalysis.IsCurrency)
 			if err != nil {
 				if err == sql.ErrNoRows {
 					out = fmt.Sprintf("%s\n\n**No results found for that query.** Try again?", out)
