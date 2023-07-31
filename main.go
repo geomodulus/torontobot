@@ -54,7 +54,7 @@ func main() {
 	}
 	defer db.Close()
 
-	tb, err := bot.New(db, ai, store, *hostname)
+	tb, err := bot.New(ctx, db, ai, store, *hostname)
 	if err != nil {
 		log.Fatalf("Error creating bot: %s", err)
 	}
@@ -82,7 +82,13 @@ func main() {
 		if strings.TrimSpace(question) == "" {
 			continue
 		}
-		sqlAnalysis, err := tb.SQLAnalysis(ctx, question)
+		table, err := tb.SelectTable(ctx, question)
+		if err != nil {
+			fmt.Println("Error selecting table:", err)
+			continue
+		}
+		fmt.Printf("Selected table: %+v\n", table)
+		sqlAnalysis, err := tb.SQLAnalysis(ctx, table, question)
 		if err != nil {
 			fmt.Println("Error analyzing SQL query:", err)
 			continue
@@ -241,31 +247,31 @@ func main() {
 				}
 				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 
-					case "line":
-							js, err := viz.GenerateLineChartJS(
-								"#torontobot-chart",
-								chartSelected.Title,
-								chartSelected.Data,
-								chartSelected.ValueIsCurrency,
-								viz.WithBreakpointWidth())
-							if err != nil {
-								fmt.Println("Error generating JS:", err)
-								continue
-							}
-							id := citygraph.NewID().String()
-							modPath, err := tb.SaveToGraph(
-								ctx,
-								id,
-								question,
-								viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
-								js,
-								"",
-								"Local User")
-							if err != nil {
-								fmt.Println("Error saving chart to graph:", err)
-								continue
-							}
-							fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+			case "line":
+				js, err := viz.GenerateLineChartJS(
+					"#torontobot-chart",
+					chartSelected.Title,
+					chartSelected.Data,
+					chartSelected.ValueIsCurrency,
+					viz.WithBreakpointWidth())
+				if err != nil {
+					fmt.Println("Error generating JS:", err)
+					continue
+				}
+				id := citygraph.NewID().String()
+				modPath, err := tb.SaveToGraph(
+					ctx,
+					id,
+					question,
+					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+					js,
+					"",
+					"Local User")
+				if err != nil {
+					fmt.Println("Error saving chart to graph:", err)
+					continue
+				}
+				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
 
 			case "pie":
 				js, err := viz.GeneratePieChartJS(

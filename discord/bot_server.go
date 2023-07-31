@@ -88,7 +88,23 @@ func (s *BotServer) slashCommandHandler(ds *discordgo.Session, i *discordgo.Inte
 			question := option.StringValue()
 
 			log.Printf("Received question: %s\n", question)
-			sqlAnalysis, err := s.bot.SQLAnalysis(ctx, question)
+
+			// Select table then query
+			// table, _ := s.bot.SelectTable(ctx, question)
+			// sqlAnalysis, _ := s.bot.SQLAnalysis(ctx, table, question)
+			table, err := s.bot.SelectTable(ctx, question)
+			if err != nil {
+				errMsg := fmt.Sprintf("Error selecting table: %v", err)
+				_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+					Content: &errMsg,
+				})
+				if err != nil {
+					log.Println("Error editing initial response:", err)
+				}
+				return
+			}
+
+			sqlAnalysis, err := s.bot.SQLAnalysis(ctx, table, question)
 			if err != nil {
 				errMsg := fmt.Sprintf("Error analyzing SQL query: %v", err)
 				_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{

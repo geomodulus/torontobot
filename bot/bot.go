@@ -5,14 +5,16 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
+	"github.com/chrisdinn/vector-db/index"
 	"github.com/rolldever/go-json5"
 	"github.com/sashabaranov/go-openai"
 
@@ -30,6 +32,57 @@ const (
 	// is more "creative".
 	RespTemp = 0.1
 )
+
+var (
+	//go:embed prompts/sql_gen.txt
+	sqlGenTmpl []byte
+	//go:embed prompts/chart_select.txt
+	chartSelectTmpl string
+	//go:embed tables.json5
+	tablesJSON []byte
+)
+
+type DataTable struct {
+	Name         string                       `json:"name"`
+	Desc         string                       `json:"description"`
+	Schema       string                       `json:"schema"`
+	Enums        map[string][]interface{}     `json:"enums"`
+	Hints        map[string]map[string]string `json:"hints"`
+	Instructions string                       `json:"instructions"`
+}
+
+func (t *DataTable) EmbeddingText() string {
+	txt := t.Name + "\n" + t.Desc + "\n"
+	txt += "Schema:\n" + t.Schema + "\n"
+	if len(t.Enums) > 0 {
+		txt += "Enums:\n"
+		for k, v := range t.Enums {
+			var vals []string
+			for _, val := range v {
+				switch ev := val.(type) {
+				case string:
+					vals = append(vals, ev)
+				case float64:
+					vals = append(vals, strconv.FormatFloat(ev, 'f', -1, 64))
+				case int:
+					vals = append(vals, strconv.Itoa(ev))
+				}
+			}
+			txt += " - " + k + ": " + strings.Join(vals, ", ") + "\n"
+		}
+	}
+	if len(t.Hints) > 0 {
+		txt += "Hints:\n"
+		for k, v := range t.Hints {
+			txt += " - " + k + ": "
+			for k2, v2 := range v {
+				txt += k2 + ": " + v2 + ", "
+			}
+			txt += "\n"
+		}
+	}
+	return txt
+}
 
 type MsgTemplate struct {
 	Role         string               `json:"role"`
@@ -55,41 +108,110 @@ func (t *MsgTemplate) Parse() error {
 
 type TorontoBot struct {
 	Hostname          string
+	sqlGenPrompt      *template.Template
 	sqlGenTemplates   []*MsgTemplate
 	chartSelectPrompt *template.Template
 	graphStore        *citygraph.Store
 	ai                *openai.Client
 	db                *sql.DB
+	tables            map[string]*DataTable
+	tableIndex        *index.VectorIndex[string]
 }
 
-func New(db *sql.DB, ai *openai.Client, store *citygraph.Store, host string) (*TorontoBot, error) {
-	tmplsBytes, err := os.ReadFile("./prompts/sql_gen.json5")
-	if err != nil {
-		return nil, fmt.Errorf("reading sql_gen.json5: %v", err)
+func New(ctx context.Context, db *sql.DB, ai *openai.Client, store *citygraph.Store, host string) (*TorontoBot, error) {
+	var tableList []*DataTable
+	if err := json5.Unmarshal(tablesJSON, &tableList); err != nil {
+		log.Fatalf("Error unmarshalling tables.json5: %s", err)
+	}
+	tables := map[string]*DataTable{}
+	for _, table := range tableList {
+		tables[table.Name] = table
 	}
 
-	templates := []*MsgTemplate{}
-	if err := json5.Unmarshal(tmplsBytes, &templates); err != nil {
-		return nil, fmt.Errorf("unmarshalling sql_gen.json5: %+v", err)
-	}
-	for _, t := range templates {
-		if err := t.Parse(); err != nil {
-			return nil, fmt.Errorf("parsing template: %v", err)
+	embeddings := []*index.DataPoint[string]{}
+
+	var dimensions int
+	for _, table := range tables {
+		txt := table.EmbeddingText()
+
+		req := openai.EmbeddingRequestStrings{
+			Input: []string{txt},
+			Model: openai.AdaEmbeddingV2,
 		}
+		// Generate embeddings
+		resp, err := ai.CreateEmbeddings(ctx, req)
+		if err != nil {
+			log.Fatalf("Error creating embeddings: %s", err)
+		}
+		if len(resp.Data) == 0 {
+			log.Fatalf("No embeddings returned for table: %q", table.Name)
+		}
+		dimensions = len(resp.Data[0].Embedding)
+		var vec []float64
+		for _, emb := range resp.Data[0].Embedding {
+			vec = append(vec, float64(emb))
+		}
+		embeddings = append(embeddings, &index.DataPoint[string]{
+			ID:        table.Name,
+			Embedding: vec,
+		})
 	}
 
-	chartSelectPrompt, err := template.ParseFiles("./prompts/chart_select.txt")
+	tableIndex, err := index.NewVectorIndex(1, dimensions, 2, embeddings, index.NewCosineDistanceMeasure())
 	if err != nil {
-		return nil, fmt.Errorf("parsing chart_select.txt: %v", err)
+		log.Fatalf("Error creating index: %s", err)
+	}
+
+	tableIndex.Build()
+
+	sqlGenPrompt, err := template.New("sql_gen").Parse(string(sqlGenTmpl))
+	if err != nil {
+		return nil, fmt.Errorf("parsing prompts/sql_gen.txt: %v", err)
+	}
+	chartSelectPrompt, err := template.New("chart_select").Parse(chartSelectTmpl)
+	if err != nil {
+		return nil, fmt.Errorf("parsing prompts/chart_select.txt: %v", err)
 	}
 	return &TorontoBot{
 		Hostname:          host,
-		sqlGenTemplates:   templates,
+		sqlGenPrompt:      sqlGenPrompt,
 		chartSelectPrompt: chartSelectPrompt,
 		graphStore:        store,
 		ai:                ai,
 		db:                db,
+		tables:            tables,
+		tableIndex:        tableIndex,
 	}, nil
+}
+
+func (b *TorontoBot) SelectTable(ctx context.Context, question string) (*DataTable, error) {
+	req := openai.EmbeddingRequestStrings{
+		Input: []string{question},
+		Model: openai.AdaEmbeddingV2,
+	}
+	// Generate embeddings
+	resp, err := b.ai.CreateEmbeddings(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("creating embeddings: %v", err)
+	}
+	if len(resp.Data) == 0 {
+		return nil, fmt.Errorf("no embeddings returned")
+	}
+	var vec []float64
+	for _, emb := range resp.Data[0].Embedding {
+		vec = append(vec, float64(emb))
+	}
+
+	searchResults, err := b.tableIndex.SearchByVector(vec, 2, 10.0)
+	if err != nil {
+		return nil, fmt.Errorf("searching index: %v", err)
+	}
+	selected := b.tables[(*searchResults)[0].ID]
+	fmt.Printf("Selected: %+v\n", b.tables[(*searchResults)[0].ID])
+	for _, searchResult := range *searchResults {
+		fmt.Printf("id: %v, distance: %f\n", searchResult.ID, searchResult.Distance)
+	}
+	return selected, nil
 }
 
 type SQLResponse struct {
@@ -122,35 +244,29 @@ var SQLAnalysisFunction = openai.FunctionDefinition{
 	},
 }
 
-func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResponse, error) {
-
+func (b *TorontoBot) SQLAnalysis(ctx context.Context, table *DataTable, question string) (*SQLResponse, error) {
 	data := struct {
-		Date string
+		Date  string
+		Table *DataTable
 	}{
-		Date: time.Now().Format("January 2, 2006"),
+		Date:  time.Now().Format("January 2, 2006"),
+		Table: table,
 	}
 
-	var msgs []openai.ChatCompletionMessage
-	for _, t := range b.sqlGenTemplates {
-		var msg bytes.Buffer
-		if t.tmpl != nil {
-			if err := t.tmpl.Execute(&msg, data); err != nil {
-				return nil, fmt.Errorf("executing template: %+v", err)
-			}
-		}
-		msgs = append(msgs, openai.ChatCompletionMessage{
-			Role:         t.Role,
-			Content:      msg.String(),
-			FunctionCall: t.FunctionCall,
-		})
+	var systemPrompt bytes.Buffer
+	if err := b.sqlGenPrompt.Execute(&systemPrompt, data); err != nil {
+		return nil, fmt.Errorf("executing sql_gen template: %v", err)
 	}
 
 	aiResp, err := b.ai.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: Model,
-		Messages: append(msgs, openai.ChatCompletionMessage{
+		Messages: []openai.ChatCompletionMessage{{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: systemPrompt.String(),
+		}, {
 			Role:    openai.ChatMessageRoleUser,
 			Content: question,
-		}),
+		}},
 		Temperature: RespTemp,
 		Functions: []openai.FunctionDefinition{
 			SQLAnalysisFunction,
@@ -177,12 +293,8 @@ func (b *TorontoBot) SQLAnalysis(ctx context.Context, question string) (*SQLResp
 }
 
 func (b *TorontoBot) LoadResults(sqlQuery string) (string, error) {
-	// There are some bad phrases GPT-3.5 inserts without escaping, so we need to do it here.
-	sqlQuery = strings.ReplaceAll(sqlQuery, "Children's Services", "Children''s Services")
-	sqlQuery = strings.ReplaceAll(sqlQuery, "Mayor's Office", "Mayor''s Office")
-
+	sqlQuery = sanitizeQuery(sqlQuery)
 	fmt.Println("running sqlQuery:", sqlQuery)
-
 	return reader.ReadDataTable(b.db, sqlQuery)
 }
 
@@ -238,22 +350,22 @@ var ChartSelectFunction = openai.FunctionDefinition{
 	},
 }
 
-//Example response:
-//{
-//  "Chart": "stacked bar chart",
-//  "Title": TTC vs Police Budgets",
-//  "Keys": ["TTC", "Police"],
-//  "Data": [{
-//    "Date": 2014,
-//    "TTC": <item-number>,
-//    "Police": <item-number>
-//  }, {
-//    "Date": 2015,
-//    "TTC": <item-number>,
-//    "Police": <item-number>
-//  }],
-//  "ValueIsCurrency": true
-//}
+//  Potenial response for stacked bar chart:
+//  {
+//    "Chart": "stacked bar chart",
+//    "Title": TTC vs Police Budgets",
+//    "Keys": ["TTC", "Police"],
+//    "Data": [{
+//      "Date": 2014,
+//      "TTC": <item-number>,
+//      "Police": <item-number>
+//    }, {
+//      "Date": 2015,
+//      "TTC": <item-number>,
+//      "Police": <item-number>
+//    }],
+//    "ValueIsCurrency": true
+//  }
 
 type ChartType int
 
@@ -365,4 +477,11 @@ func (b *TorontoBot) SaveToGraph(ctx context.Context, id, title, body, chartJS, 
 		return "", fmt.Errorf("generating slug ID: %v", err)
 	}
 	return fmt.Sprintf("/mod/%s/%s", slugID, mod.SlugTitle()), nil
+}
+
+func sanitizeQuery(sqlQuery string) string {
+	// There are some bad phrases GPT-3.5 inserts without escaping, so we need to do it here.
+	sqlQuery = strings.ReplaceAll(sqlQuery, "Children's Services", "Children''s Services")
+	sqlQuery = strings.ReplaceAll(sqlQuery, "Mayor's Office", "Mayor''s Office")
+	return sqlQuery
 }
