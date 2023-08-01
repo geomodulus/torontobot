@@ -2,8 +2,6 @@ module github.com/geomodulus/torontobot
 
 go 1.20
 
-replace github.com/chrisdinn/vector-db => ../../vector-db
-
 require (
 	cloud.google.com/go/storage v1.30.1
 	github.com/bwmarrin/discordgo v0.27.1
