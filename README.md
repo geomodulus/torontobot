@@ -116,4 +116,4 @@ we've retooled the idea to better fit the Torontoverse ecosystem.
 
 ## Support
 
-Join [our Discord](https://discord.gg/sQzxHBq8Q2).
+Join [our Discord](https://discord.gg/sggsjGet3E).
