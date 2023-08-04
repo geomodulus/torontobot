@@ -95,10 +95,7 @@ func main() {
 		}
 
 		if sqlAnalysis.MissingData != "" {
-			fmt.Printf(
-				"I can't answer that: %s\n\n%s\n",
-				sqlAnalysis.MissingData,
-				sqlAnalysis.Applicability)
+			fmt.Printf("%s\n", sqlAnalysis.MissingData)
 			continue
 		}
 

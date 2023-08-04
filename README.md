@@ -5,7 +5,7 @@ or as a Discord bot.
 
 ## Usage
 
-Join [our Discord](https://discord.gg/sQzxHBq8Q2). In the "Open Data" channel, using a slash command:
+Join [our Discord](https://discord.gg/sggsjGet3E). In the "Open Data" channel, using a slash command:
 
     /torontobot <your-query-here>
 
@@ -26,23 +26,37 @@ data source: the City of Toronto approved operating budget. This file has good q
 and because it's one big flat table covering the whole city budget, it's useful for a lot of
 different queries.
 
-We need to create a local database file containing the target data so we can query it locally. At
-present, a fully loaded database file is about 15MB.
+We need to create a local database file containing the target data so we can query it locally. Bear
+in mind, if you want to include 311 request data you are in for a wait.
 
-First, you'll need to intialize a fresh, empty database. Do it like this (in the `db` dir):
+This project uses [golang-migrate/migrate](https://github.com/golang-migrate/migrate) to manage
+migrations and you can install it like so:
+
 ```
- $~/code/torontobot/db> go run migrate.go
+ $~/code/torontobot/db> go install https://github.com/golang-migrate/migrate
+```
+
+That will add a `migrate` binary to your Go binary path.
+
+Next, you'll need to intialize a fresh, empty database. Do it like this (in the `db` dir):
+
+```
+ $~/code/torontobot/db> migrate -path db/migrations -database "sqlite3://db/toronto.db" up 
 ```
 
 That will create `toronto.db`, the `sqlite3` database we'll use to store our data.
 
-Then, run the following ingest command:
+Then, from the ingest directory, run the ingest script:
+
 ```
  $~/code/torontobot/ingest> go run .
 ```
 
 Over the course of the next several minutes, this script will download City of Toronto operating
 budget data for the years 2014 through 2023 collating and storing every entry in our database file.
+
+Then, over several more hours it will load each of the 311 service request files for the last ~13
+years and write those to the database as well.
 
 ## Usage
 
@@ -77,6 +91,23 @@ Query result:
 
 >>  
 ```
+
+## Adding a new dataset
+
+There are three steps required to add a new dataset.
+
+1. Figure out what schema to use. (easy)
+2. Write ingest script for the dataset. (hard)
+3. Add table description to [tables.json5](https://github.com/geomodulus/torontobot/blob/main/bot/tables.json5) (very easy)
+
+Don't hesitate to give a sample of the data to GPT-4 and ask for a draft schema.
+
+The hard part is figuring out how to ingest the data. There are two examples in the current
+[ingest script](https://github.com/geomodulus/torontobot/blob/main/ingest/main.go), but every piece
+of data is unique and it's important to give the dataset proper consideration during ingest.
+
+`tables.json5` will let you add both hints and special instructions for the table. This can improve
+the query experience dramatically.
 
 ## Inspiration
 

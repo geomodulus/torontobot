@@ -119,9 +119,8 @@ func (s *BotServer) slashCommandHandler(ds *discordgo.Session, i *discordgo.Inte
 			out := fmt.Sprintf("Question: *%s*", question)
 			if sqlAnalysis.MissingData != "" {
 				out = fmt.Sprintf(
-					"%s\n\nI can't answer that: %s\n\n%s",
+					"%s\n%s",
 					out,
-					sqlAnalysis.Applicability,
 					sqlAnalysis.MissingData)
 				// Edit the original deferred response with the actual content
 				_, err = ds.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
