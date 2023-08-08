@@ -33,7 +33,7 @@ This project uses [golang-migrate/migrate](https://github.com/golang-migrate/mig
 migrations and you can install it like so:
 
 ```
- $~/code/torontobot/db> go install https://github.com/golang-migrate/migrate
+ $~/code/torontobot/db> go  install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate
 ```
 
 That will add a `migrate` binary to your Go binary path.
