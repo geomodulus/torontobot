@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"flag"
 	"log"
-
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -53,7 +52,22 @@ func main() {
 				}
 			}
 		}
-
+	case "ase-tickets":
+		if *year != 0 {
+			url, ok := aseTicketsFiles[*year]
+			if !ok {
+				log.Fatalf("No data for year %d", *year)
+			}
+			if err := processASETicketsYear(db, *year, url); err != nil {
+				log.Fatalf("Error processing %d: %v", *year, err)
+			}
+		} else {
+			for year, url := range aseTicketsFiles {
+				if err := processASETicketsYear(db, year, url); err != nil {
+					log.Fatalf("Error processing %d: %v", year, err)
+				}
+			}
+		}
 	case "all":
 		for year, url := range operatingBudgetFiles {
 			if err := processOperatingBudgetYear(db, year, url); err != nil {
@@ -72,12 +86,16 @@ func main() {
 There are two supported datasets: 
   1. 311-service-requests
   2. operating-budget
+  3. ase-tickets
 
 To ingest either one, pass the dataset name as an argument to this program. For example:
   ./ingest 311-service-requests
 
 You can scope to a single year by passing the --year flag. For example:
   ./ingest --year 2017 311-service-requests
+
+You can scope to a single year by passing the --year flag. For example:
+./ingest --year 2017 311-service-requests
 
 You can ingest all years for all datasets (warning: takes a while) by running:
   ./ingest all
