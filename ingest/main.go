@@ -94,9 +94,6 @@ To ingest either one, pass the dataset name as an argument to this program. For 
 You can scope to a single year by passing the --year flag. For example:
   ./ingest --year 2017 311-service-requests
 
-You can scope to a single year by passing the --year flag. For example:
-./ingest --year 2017 311-service-requests
-
 You can ingest all years for all datasets (warning: takes a while) by running:
   ./ingest all
 `)
