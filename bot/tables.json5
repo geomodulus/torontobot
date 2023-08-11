@@ -215,4 +215,34 @@
   source: "https://open.toronto.ca/dataset/311-service-requests-customer-initiated/"
 
 },
+{
+  name: "ase_tickets",
+
+  description: "\
+  This dataset contains the number of Automated Speed Enforcement (ASE) tickets issued each month in the \
+  City of Toronto from July 6, 2020 to Present. There are currently 50 ASE systems installed in Community \
+  Safety Zones near schools, with two systems installed in each ward. The ASE units are mobile and rotate \
+  every 3-6 months. For Automated Speed Enforcement Locations,.\
+    ", 
+
+  schema: "CREATE TABLE IF NOT EXISTS ase_tickets (\
+    id INTEGER PRIMARY KEY AUTOINCREMENT,\
+    site_code TEXT NOT NULL,\
+    location TEXT NOT NULL,\
+    enforcement_start_date TEXT NOT NULL,\
+    enforcement_end_date TEXT NOT NULL,\
+    month INTEGER NOT NULL,\
+    year INTEGER NOT NULL,\
+    ticket_number INTEGER NOT NULL,\
+    estimated_fine INTEGER NOT NULL\
+  );\
+  ",
+
+  enums: {
+    year: [2020, 2021, 2022, 2023],
+    month: [1,2,3,4,5,6,7,8,9,10,11,12]
+  },
+
+  source: "https://open.toronto.ca/dataset/automated-speed-enforcement-ase-charges/"
+}
 ]
