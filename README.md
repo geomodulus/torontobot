@@ -3,6 +3,8 @@
 TorontoBot is a tool for querying Toronto Open Data. It answers questions either on the command line
 or as a Discord bot.
 
+To help explain, here are some [slides](https://docs.google.com/presentation/d/18zs_1IhCaF1aJ-cQCWIBr0Ga2Zk6f17XL1xXPsy54yo).
+
 ## Usage
 
 Join [our Discord](https://discord.gg/sggsjGet3E). In the "Open Data" channel, using a slash command:
