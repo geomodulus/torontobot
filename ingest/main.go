@@ -80,6 +80,12 @@ func main() {
 				log.Fatalf("Error processing %d: %v", year, err)
 			}
 		}
+
+		for year, url := range aseTicketsFiles {
+			if err := processASETicketsYear(db, year, url); err != nil {
+				log.Fatalf("Error processing %d: %v", year, err)
+			}
+		}
 	default:
 		log.Fatal(`# TorontoBot Ingest
 
