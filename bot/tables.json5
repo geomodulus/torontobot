@@ -244,5 +244,45 @@
   },
 
   source: "https://open.toronto.ca/dataset/automated-speed-enforcement-ase-charges/"
+},
+{
+  name: "condominium_apartment_price",
+
+  description: "\
+  The New Condominium Apartment Price Index (NCAPI) is a quarterly series that measures changes over time in the developers' selling prices of units in new condominium apartment buildings in Halifax, Montréal, Québec City, Ottawa, Toronto, Calgary, Edmonton, Vancouver, Victoria, and for the composite of these nine census metropolitan areas (CMAs). The NCAPI starts in the first quarter of 2017.\
+\
+A detailed methodology for the NCAPI is available in the Prices Analytical Series.\
+https://www150.statcan.gc.ca/n1/pub/62f0014m/62f0014m2022004-eng.htm\
+\
+Reference period: The time period for which the NCAPI equals 100; currently, this is 2017.\
+\
+Collection period: The collection process occurs over a two-week period, beginning approximately one week after the 15th day of the reference month.\
+\
+Subjects\
+- Construction\
+- Construction price indexes\
+- Prices and price indexes\
+- Residential construction\
+    ", 
+
+  schema: "CREATE TABLE IF NOT EXISTS condominium_apartment_price (\
+    id INTEGER PRIMARY KEY AUTOINCREMENT,\
+    record_period  TEXT NOT NULL,\
+    record_start_month int NOT NULL,\
+    record_end_month int NOT NULL,\
+    year INTEGER NOT NULL,\
+    geolocation TEXT NOT NULL,\
+    price_index FLOAT NOT NULL\
+);\
+  ",
+
+  enums: {
+    year: [2017, 2018, 2019,2020, 2021, 2022, 2023],
+    record_period: ["Q1","Q2","Q3","Q4"],
+    record_start_month: [1,4,7,10]
+    record_end_month: [3,6,9,12]
+  },
+
+  source: "https://www23.statcan.gc.ca/imdb/p2SV.pl?Function=getSurvey&SDDS=5236"
 }
 ]
