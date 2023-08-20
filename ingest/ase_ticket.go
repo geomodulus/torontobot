@@ -93,6 +93,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			continue
 		}
 
+		if siteCodeIdx == -1 || locationIdx == -1 || enforcementStartDateIdx == -1 || enforcementEndDateIdx == -1 {
+			continue
+		}
+
 		var site_code, location string
 
 		if siteCodeIdx != -1 {
