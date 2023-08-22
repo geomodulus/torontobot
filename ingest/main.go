@@ -68,6 +68,23 @@ func main() {
 				}
 			}
 		}
+	case "condo-apartment-price":
+		if *year != 0 {
+			url, ok := condoApartmentFiles[*year]
+			if !ok {
+				log.Fatalf("No data for year %d", *year)
+			}
+			if err := processCondoApartmentPriceYear(db, *year, url); err != nil {
+				log.Fatalf("Error processing %d: %v", *year, err)
+			}
+		} else {
+			for year, url := range condoApartmentFiles {
+				if err := processCondoApartmentPriceYear(db, year, url); err != nil {
+					log.Fatalf("Error processing %d: %v", year, err)
+				}
+			}
+		}
+
 	case "all":
 		for year, url := range operatingBudgetFiles {
 			if err := processOperatingBudgetYear(db, year, url); err != nil {
@@ -80,6 +97,18 @@ func main() {
 				log.Fatalf("Error processing %d: %v", year, err)
 			}
 		}
+
+		for year, url := range aseTicketsFiles {
+			if err := processASETicketsYear(db, year, url); err != nil {
+				log.Fatalf("Error processing %d: %v", year, err)
+			}
+		}
+
+		for year, url := range condoApartmentFiles {
+			if err := processCondoApartmentPriceYear(db, year, url); err != nil {
+				log.Fatalf("Error processing %d: %v", year, err)
+			}
+		}
 	default:
 		log.Fatal(`# TorontoBot Ingest
 
@@ -87,6 +116,7 @@ There are two supported datasets:
   1. 311-service-requests
   2. operating-budget
   3. ase-tickets
+  4. condo-apartment-price
 
 To ingest either one, pass the dataset name as an argument to this program. For example:
   ./ingest 311-service-requests
