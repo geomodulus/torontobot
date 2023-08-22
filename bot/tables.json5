@@ -233,7 +233,7 @@
     enforcement_end_date TEXT NOT NULL,\
     month INTEGER NOT NULL,\
     year INTEGER NOT NULL,\
-    ticket_number INTEGER NOT NULL,\
+    ticket_count INTEGER NOT NULL,\
     estimated_fine INTEGER NOT NULL\
   );\
   ",

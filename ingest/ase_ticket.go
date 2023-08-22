@@ -23,7 +23,7 @@ func processASETicketsYear(db *sql.DB, year int, url string) error {
 	// Prepare the SQL statement for inserting datka
 	stmt, err := db.Prepare(`
 INSERT INTO ase_tickets
-(site_code, location, enforcement_start_date, enforcement_end_date, month, year, ticket_number, estimated_fine)
+(site_code, location, enforcement_start_date, enforcement_end_date, month, year, ticket_count, estimated_fine)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
@@ -88,7 +88,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 
 			continue
 		}
-		
+
 		if len(row) < 5 { // total of >5: site_code,location,enforcement_start_date,enforcement_end_date,ticket_number
 			continue
 		}
@@ -170,7 +170,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			}
 			oneMonthLater = oneMonthLater.AddDate(0, 1, 0) // fast forward by one month
 		}
-		
+
 	}
 	fmt.Printf("%d ASE tickets imported.\n", year)
 
