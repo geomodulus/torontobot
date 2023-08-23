@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -22,12 +21,12 @@ func (s *BotServer) respondToDM(ds *discordgo.Session, m *discordgo.MessageCreat
 	question := m.Content
 	log.Printf("Received question: %s\n", question)
 
-	// Select table then query
-	// table, _ := s.bot.SelectTable(ctx, question)
-	// sqlAnalysis, _ := s.bot.SQLAnalysis(ctx, table, question)
 	table, err := s.bot.SelectTable(ctx, question)
 	if err != nil {
-		if _, err := ds.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error selecting table: %v", err)); err != nil {
+		if _, err := ds.ChannelMessageSend(
+			m.ChannelID,
+			fmt.Sprintf("Error selecting table: %v", err),
+		); err != nil {
 			log.Println("Error sending response:", err)
 		}
 		return
@@ -44,12 +43,9 @@ func (s *BotServer) respondToDM(ds *discordgo.Session, m *discordgo.MessageCreat
 		return
 	}
 
-	out := fmt.Sprintf("Question: *%s*", question)
+	out := ""
 	if sqlAnalysis.MissingData != "" {
-		out = fmt.Sprintf(
-			"%s\n%s",
-			out,
-			sqlAnalysis.MissingData)
+		out = sqlAnalysis.MissingData
 		// Send response
 		if _, err := ds.ChannelMessageSend(m.ChannelID, out); err != nil {
 			log.Println("Error sending response:", err)
@@ -58,8 +54,7 @@ func (s *BotServer) respondToDM(ds *discordgo.Session, m *discordgo.MessageCreat
 	}
 
 	out = fmt.Sprintf(
-		"%s\n\n%s\n\nExecuting query `%s`",
-		out,
+		"%s\n\nExecuting query `%s`",
 		sqlAnalysis.Applicability,
 		sqlAnalysis.SQL)
 	if _, err := ds.ChannelMessageSend(m.ChannelID, out); err != nil {
@@ -83,13 +78,11 @@ func (s *BotServer) respondToDM(ds *discordgo.Session, m *discordgo.MessageCreat
 	id, err := uq.StoreUserQuery(
 		s.db,
 		&uq.UserQuery{
-			m.Author.ID,
-			"",
-			m.ChannelID,
-			question,
-			sqlAnalysis,
-			resultsTable,
-			time.Time{},
+			UserID:      m.Author.ID,
+			ChannelID:   m.ChannelID,
+			Question:    question,
+			SQLResponse: sqlAnalysis,
+			Results:     resultsTable,
 		})
 	if err != nil {
 		log.Println("Error storing query:", err)
@@ -100,7 +93,7 @@ func (s *BotServer) respondToDM(ds *discordgo.Session, m *discordgo.MessageCreat
 	if len(resultsTable) > maxLen {
 		msg = resultsTable[:maxLen-3] + "..."
 	}
-	out = fmt.Sprintf("%s\n\nQuery result:\n```%s```\n", out, msg)
+	out = fmt.Sprintf("Query result:\n```%s```\n", msg)
 	buttons := []discordgo.MessageComponent{
 		&discordgo.Button{
 			Emoji: discordgo.ComponentEmoji{
@@ -110,16 +103,6 @@ func (s *BotServer) respondToDM(ds *discordgo.Session, m *discordgo.MessageCreat
 			Style:    discordgo.PrimaryButton,
 			CustomID: fmt.Sprintf("png-%d", id),
 		},
-	}
-	if s.bot.HasGraphStore() {
-		buttons = append(buttons, &discordgo.Button{
-			Emoji: discordgo.ComponentEmoji{
-				Name: "🌐",
-			},
-			Label:    "Export to Web",
-			Style:    discordgo.SecondaryButton,
-			CustomID: fmt.Sprintf("export-%d", id),
-		})
 	}
 	if _, err := ds.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
 		Content: out,
