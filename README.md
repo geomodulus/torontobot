@@ -5,6 +5,9 @@ or as a Discord bot.
 
 To help explain, here are some [slides](https://docs.google.com/presentation/d/18zs_1IhCaF1aJ-cQCWIBr0Ga2Zk6f17XL1xXPsy54yo).
 
+**We're looking for a Go developers interested in working with LLMs to help us turn TorontoBot into
+a richly-featured, _civic assistant_.**
+
 ## Usage
 
 Join [our Discord](https://discord.gg/sggsjGet3E). In the "Open Data" channel, using a slash command:
@@ -15,6 +18,15 @@ This bot is brand new, so go easy on it if it doesn't get things right. It can a
 about the operating budget surprisingly well!
 
 To run queries locally you'll need an OpenAI API token. Get one at openai.com.
+
+As of right now, TorontoBot can answer questions about:
+
+  - The City of Toronto operating budget
+  - 311 service requests
+  - Speed camera ticket information
+  - StatsCan apartment price index.
+
+There are plenty of examples in th Discord. Don't hesitate to ask TorontoBot how it can help!
 
 ## Dependencies
 
