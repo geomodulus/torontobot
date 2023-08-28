@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -29,6 +31,7 @@ func main() {
 	dbFile := flag.String("db-file", "./db/toronto.db", "Database file for tabular city data")
 	discordBotToken := flag.String("discord-bot-token", "", "Token for accessing Discord API")
 	openaiToken := flag.String("openai-token", "", "Token for accessing OpenAI API")
+	headless := flag.Bool("headless", false, "Run in headless mode (no stdin, only Discord bot)")
 	hostname := flag.String("host", "https://torontoverse.com", "host and scheme for torontoverse server")
 
 	flag.Parse()
@@ -69,260 +72,271 @@ func main() {
 		fmt.Println("TorontoBot is now live on Discord. Press CTRL-C to exit.")
 	}
 
-	rl, err := readline.New(">> ")
-	if err != nil {
-		log.Fatal(err)
-	}
-	// loop to read commands and print output
-	for {
-		question, err := rl.Readline()
-		if err != nil {
-			break
-		}
-		if strings.TrimSpace(question) == "" {
-			continue
-		}
-		table, err := tb.SelectTable(ctx, question)
-		if err != nil {
-			fmt.Println("Error selecting table:", err)
-			continue
-		}
-		fmt.Printf("Selected table: %q\n", table.Name)
-		sqlAnalysis, err := tb.SQLAnalysis(ctx, table, question)
-		if err != nil {
-			fmt.Println("Error analyzing SQL query:", err)
-			continue
-		}
+	if *headless {
+		// Run in headless mode
+		// Listen for termination signal
+		term := make(chan os.Signal, 1)
+		signal.Notify(term, syscall.SIGINT, syscall.SIGTERM)
 
-		if sqlAnalysis.MissingData != "" {
-			fmt.Printf("%s\n", sqlAnalysis.MissingData)
-			continue
-		}
+		// Wait for termination
+		<-term
+	} else {
 
-		fmt.Printf(
-			"%s\n\n%s\n\nSQL: %q\n",
-			sqlAnalysis.Schema,
-			sqlAnalysis.Applicability,
-			sqlAnalysis.SQL)
-
-		resultsTable, err := tb.LoadResults(sqlAnalysis.SQL, sqlAnalysis.IsCurrency)
+		rl, err := readline.New(">> ")
 		if err != nil {
-			if err == sql.ErrNoRows {
-				fmt.Println("No results found.")
-			} else {
-				fmt.Println("Error executing SQL query:", err)
-			}
-			continue
+			log.Fatal(err)
 		}
-		// Store query for subsequent charting and export,
-		_, err = uq.StoreUserQuery(
-			db,
-			&uq.UserQuery{
-				"",
-				"",
-				"",
-				question,
-				sqlAnalysis,
-				resultsTable,
-				time.Time{},
-			})
-		if err != nil {
-			log.Println("Error storing query:", err)
-			return
-		}
-
-		fmt.Printf("\nQuery result:\n```%s```\n", resultsTable)
-
-		if store != nil {
-			chartSelected, err := tb.SelectChart(ctx, question, resultsTable)
+		// loop to read commands and print output
+		for {
+			question, err := rl.Readline()
 			if err != nil {
-				fmt.Println("Error selecting chart:", err)
+				break
+			}
+			if strings.TrimSpace(question) == "" {
 				continue
 			}
-			switch strings.ToLower(chartSelected.Chart) {
-			case "bar":
-				js, err := viz.GenerateBarChartJS(
-					"#torontobot-chart",
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					viz.WithBreakpointWidth())
-				if err != nil {
-					fmt.Println("Error generating JS:", err)
-					continue
-				}
-				id := citygraph.NewID().String()
+			table, err := tb.SelectTable(ctx, question)
+			if err != nil {
+				fmt.Println("Error selecting table:", err)
+				continue
+			}
+			fmt.Printf("Selected table: %q\n", table.Name)
+			sqlAnalysis, err := tb.SQLAnalysis(ctx, table, question)
+			if err != nil {
+				fmt.Println("Error analyzing SQL query:", err)
+				continue
+			}
 
-				chartHTML, err := viz.GenerateBarChartHTML(
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					true, //  yes to dark mode
-					viz.WithFixedWidth(800),
-					viz.WithFixedHeight(750),
-				)
-				if err != nil {
-					continue
-				}
-				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
-					ctx,
-					id,
-					chartSelected.Title,
-					chartHTML,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-				)
-				if err != nil {
-					fmt.Println("Error generating feature image:", err)
-					continue
-				}
-				modPath, err := tb.SaveToGraph(
-					ctx,
-					id,
-					question,
-					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
-					js,
-					featureImageURL,
-					"Local User")
-				if err != nil {
-					fmt.Println("Error saving chart to graph:", err)
-					continue
-				}
-				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+			if sqlAnalysis.MissingData != "" {
+				fmt.Printf("%s\n", sqlAnalysis.MissingData)
+				continue
+			}
 
-			case "stacked-bar":
-				js, err := viz.GenerateStackedBarChartJS(
-					"#torontobot-chart",
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					viz.WithBreakpointWidth())
-				if err != nil {
-					fmt.Println("Error generating JS:", err)
-					continue
-				}
-				id := citygraph.NewID().String()
+			fmt.Printf(
+				"%s\n\n%s\n\nSQL: %q\n",
+				sqlAnalysis.Schema,
+				sqlAnalysis.Applicability,
+				sqlAnalysis.SQL)
 
-				chartHTML, err := viz.GenerateBarChartHTML(
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					true, //  yes to dark mode
-					viz.WithFixedWidth(800),
-					viz.WithFixedHeight(750),
-				)
-				if err != nil {
-					continue
+			resultsTable, err := tb.LoadResults(sqlAnalysis.SQL, sqlAnalysis.IsCurrency)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					fmt.Println("No results found.")
+				} else {
+					fmt.Println("Error executing SQL query:", err)
 				}
-				if err := os.WriteFile("../mainapp/static/chart.html", []byte(chartHTML), 0644); err != nil {
-					fmt.Println("Error writing chart HTML:", err)
-					continue
-				}
-				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
-					ctx,
-					id,
-					chartSelected.Title,
-					chartHTML,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-				)
-				if err != nil {
-					fmt.Println("Error generating feature image:", err)
-					continue
-				}
-				modPath, err := tb.SaveToGraph(
-					ctx,
-					id,
-					question,
-					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
-					js,
-					featureImageURL,
-					"Local User")
-				if err != nil {
-					fmt.Println("Error saving chart to graph:", err)
-					continue
-				}
-				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
-
-			case "line":
-				js, err := viz.GenerateLineChartJS(
-					"#torontobot-chart",
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					viz.WithBreakpointWidth())
-				if err != nil {
-					fmt.Println("Error generating JS:", err)
-					continue
-				}
-				id := citygraph.NewID().String()
-				modPath, err := tb.SaveToGraph(
-					ctx,
-					id,
-					question,
-					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
-					js,
+				continue
+			}
+			// Store query for subsequent charting and export,
+			_, err = uq.StoreUserQuery(
+				db,
+				&uq.UserQuery{
 					"",
-					"Local User")
-				if err != nil {
-					fmt.Println("Error saving chart to graph:", err)
-					continue
-				}
-				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
-
-			case "pie":
-				js, err := viz.GeneratePieChartJS(
-					"#torontobot-chart",
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					viz.WithBreakpointWidth())
-				if err != nil {
-					fmt.Println("Error generating JS:", err)
-					continue
-				}
-				id := citygraph.NewID().String()
-
-				chartHTML, err := viz.GeneratePieChartHTML(
-					chartSelected.Title,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-					true, //  yes to dark mode
-					viz.WithFixedWidth(800),
-					viz.WithFixedHeight(750),
-				)
-				if err != nil {
-					continue
-				}
-				featureImageURL, err := viz.GenerateAndUploadFeatureImage(
-					ctx,
-					id,
-					chartSelected.Title,
-					chartHTML,
-					chartSelected.Data,
-					chartSelected.ValueIsCurrency,
-				)
-				if err != nil {
-					fmt.Println("Error generating feature image:", err)
-					continue
-				}
-				modPath, err := tb.SaveToGraph(
-					ctx,
-					id,
+					"",
+					"",
 					question,
-					viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
-					js,
-					featureImageURL,
-					"Local User")
+					sqlAnalysis,
+					resultsTable,
+					time.Time{},
+				})
+			if err != nil {
+				log.Println("Error storing query:", err)
+				return
+			}
+
+			fmt.Printf("\nQuery result:\n```%s```\n", resultsTable)
+
+			if store != nil {
+				chartSelected, err := tb.SelectChart(ctx, question, resultsTable)
 				if err != nil {
-					fmt.Println("Error saving chart to graph:", err)
+					fmt.Println("Error selecting chart:", err)
 					continue
 				}
-				fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
-				//			//case "scatter plot":
-				//
-			default:
-				fmt.Printf("Ah you need a %s, but I can't make those yet. Soon 😈\n", chartSelected.Chart)
+				switch strings.ToLower(chartSelected.Chart) {
+				case "bar":
+					js, err := viz.GenerateBarChartJS(
+						"#torontobot-chart",
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						viz.WithBreakpointWidth())
+					if err != nil {
+						fmt.Println("Error generating JS:", err)
+						continue
+					}
+					id := citygraph.NewID().String()
+
+					chartHTML, err := viz.GenerateBarChartHTML(
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						true, //  yes to dark mode
+						viz.WithFixedWidth(800),
+						viz.WithFixedHeight(750),
+					)
+					if err != nil {
+						continue
+					}
+					featureImageURL, err := viz.GenerateAndUploadFeatureImage(
+						ctx,
+						id,
+						chartSelected.Title,
+						chartHTML,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+					)
+					if err != nil {
+						fmt.Println("Error generating feature image:", err)
+						continue
+					}
+					modPath, err := tb.SaveToGraph(
+						ctx,
+						id,
+						question,
+						viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+						js,
+						featureImageURL,
+						"Local User")
+					if err != nil {
+						fmt.Println("Error saving chart to graph:", err)
+						continue
+					}
+					fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+
+				case "stacked-bar":
+					js, err := viz.GenerateStackedBarChartJS(
+						"#torontobot-chart",
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						viz.WithBreakpointWidth())
+					if err != nil {
+						fmt.Println("Error generating JS:", err)
+						continue
+					}
+					id := citygraph.NewID().String()
+
+					chartHTML, err := viz.GenerateBarChartHTML(
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						true, //  yes to dark mode
+						viz.WithFixedWidth(800),
+						viz.WithFixedHeight(750),
+					)
+					if err != nil {
+						continue
+					}
+					if err := os.WriteFile("../mainapp/static/chart.html", []byte(chartHTML), 0644); err != nil {
+						fmt.Println("Error writing chart HTML:", err)
+						continue
+					}
+					featureImageURL, err := viz.GenerateAndUploadFeatureImage(
+						ctx,
+						id,
+						chartSelected.Title,
+						chartHTML,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+					)
+					if err != nil {
+						fmt.Println("Error generating feature image:", err)
+						continue
+					}
+					modPath, err := tb.SaveToGraph(
+						ctx,
+						id,
+						question,
+						viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+						js,
+						featureImageURL,
+						"Local User")
+					if err != nil {
+						fmt.Println("Error saving chart to graph:", err)
+						continue
+					}
+					fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+
+				case "line":
+					js, err := viz.GenerateLineChartJS(
+						"#torontobot-chart",
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						viz.WithBreakpointWidth())
+					if err != nil {
+						fmt.Println("Error generating JS:", err)
+						continue
+					}
+					id := citygraph.NewID().String()
+					modPath, err := tb.SaveToGraph(
+						ctx,
+						id,
+						question,
+						viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+						js,
+						"",
+						"Local User")
+					if err != nil {
+						fmt.Println("Error saving chart to graph:", err)
+						continue
+					}
+					fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+
+				case "pie":
+					js, err := viz.GeneratePieChartJS(
+						"#torontobot-chart",
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						viz.WithBreakpointWidth())
+					if err != nil {
+						fmt.Println("Error generating JS:", err)
+						continue
+					}
+					id := citygraph.NewID().String()
+
+					chartHTML, err := viz.GeneratePieChartHTML(
+						chartSelected.Title,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+						true, //  yes to dark mode
+						viz.WithFixedWidth(800),
+						viz.WithFixedHeight(750),
+					)
+					if err != nil {
+						continue
+					}
+					featureImageURL, err := viz.GenerateAndUploadFeatureImage(
+						ctx,
+						id,
+						chartSelected.Title,
+						chartHTML,
+						chartSelected.Data,
+						chartSelected.ValueIsCurrency,
+					)
+					if err != nil {
+						fmt.Println("Error generating feature image:", err)
+						continue
+					}
+					modPath, err := tb.SaveToGraph(
+						ctx,
+						id,
+						question,
+						viz.RenderBody(question, sqlAnalysis.Schema, sqlAnalysis.Applicability, sqlAnalysis.SQL),
+						js,
+						featureImageURL,
+						"Local User")
+					if err != nil {
+						fmt.Println("Error saving chart to graph:", err)
+						continue
+					}
+					fmt.Printf("Published chart at %s\n", tb.Hostname+modPath)
+					//			//case "scatter plot":
+					//
+				default:
+					fmt.Printf("Ah you need a %s, but I can't make those yet. Soon 😈\n", chartSelected.Chart)
+				}
 			}
 		}
 	}
