@@ -141,7 +141,7 @@ func New(ctx context.Context, db *sql.DB, ai *openai.Client, store *citygraph.St
 		// Generate embeddings
 		resp, err := ai.CreateEmbeddings(ctx, req)
 		if err != nil {
-			if strings.Contains(err.Error(),"Please try again in 20s") {
+			if strings.Contains(err.Error(), "Please try again in 20s") {
 				fmt.Printf("API use limit error, sleep for 20s before retry ...")
 				time.Sleep(21 * time.Second) // add one more second to ensure the limit won't exceeded again
 				respSecondTry, errSecondTry := ai.CreateEmbeddings(ctx, req)
@@ -152,7 +152,7 @@ func New(ctx context.Context, db *sql.DB, ai *openai.Client, store *citygraph.St
 				}
 			} else {
 				log.Fatalf("Error creating embeddings: %s", err)
-			}			
+			}
 		}
 		if len(resp.Data) == 0 {
 			log.Fatalf("No embeddings returned for table: %q", table.Name)

@@ -2,14 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"io"
 	"os"
-	"strings"
-	"encoding/csv"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,16 +25,16 @@ var condoApartmentFiles = map[int]string{
 
 func convertToQuarter(dateTime time.Time) (string, error) {
 	switch int(dateTime.Month()) {
-		case 1:
-			return "Q1", nil
-		case 4:
-			return "Q2", nil
-		case 7:
-			return "Q3", nil
-		case 10:
-			return "Q4", nil
-		default:
-			return "", fmt.Errorf("failed to convert date time to quarters")
+	case 1:
+		return "Q1", nil
+	case 4:
+		return "Q2", nil
+	case 7:
+		return "Q3", nil
+	case 10:
+		return "Q4", nil
+	default:
+		return "", fmt.Errorf("failed to convert date time to quarters")
 	}
 }
 
@@ -82,36 +82,35 @@ VALUES (?, ?, ?, ?, ?, ?)
 		fmt.Println("Error:", err)
 		return fmt.Errorf("failed to copy to CSV file: %v", err)
 	}
-	
+
 	// Open the CSV file
 	f, err := os.Open(filename)
 	csvReader := csv.NewReader(f)
 	csvReader.LazyQuotes = true
-	
+
 	// Read the CSV file
 	records, err := csvReader.ReadAll()
-	
-    if err != nil {
-        return fmt.Errorf("failed to open CSV file: %v", err)
-    }
 
+	if err != nil {
+		return fmt.Errorf("failed to open CSV file: %v", err)
+	}
 
 	// Iterate through the rows, skipping the header row
 	// record_period, record_start_month, record_end_month, year, geolocation, price_index
 	var recordStartMonthIdx, geolocationIdx, condoApartmentPriceValueIdx = -1, -1, -1
 	// "REF_DATE","GEO","DGUID","UOM","UOM_ID","SCALAR_FACTOR","SCALAR_ID","VECTOR","COORDINATE","VALUE","STATUS","SYMBOL","TERMINATED","DECIMALS"
 	for i, row := range records {
-		
+
 		if i == 0 {
 			for j, col := range row {
 
-				switch strings.ToLower(strings.TrimSpace(col)) {	
+				switch strings.ToLower(strings.TrimSpace(col)) {
 				case "geo":
 					geolocationIdx = j
 				case "value":
 					condoApartmentPriceValueIdx = j
 				default:
-					if strings.Contains(strings.ToLower(strings.TrimSpace(col)),"ref_date") {
+					if strings.Contains(strings.ToLower(strings.TrimSpace(col)), "ref_date") {
 						recordStartMonthIdx = j
 					}
 				}
@@ -119,7 +118,7 @@ VALUES (?, ?, ?, ?, ?, ?)
 
 			continue
 		}
-		
+
 		if len(row) < 3 { // total of >6: record_period, geolocation, price_index
 			continue
 		}
@@ -127,14 +126,13 @@ VALUES (?, ?, ?, ?, ?, ?)
 		if recordStartMonthIdx == -1 || geolocationIdx == -1 || condoApartmentPriceValueIdx == -1 {
 			continue
 		}
-		
-		
+
 		var record_period, geolocation string
 		var record_start_month, record_end_month, year int
 		var price_index float32
 
 		if recordStartMonthIdx != -1 {
-			dateTime,err := time.Parse("2006-01", strings.TrimSpace(row[recordStartMonthIdx]))
+			dateTime, err := time.Parse("2006-01", strings.TrimSpace(row[recordStartMonthIdx]))
 			if err == nil {
 				quarter, err := convertToQuarter(dateTime)
 				if err == nil {
@@ -144,7 +142,7 @@ VALUES (?, ?, ?, ?, ?, ?)
 					continue
 				}
 				record_start_month = int(dateTime.Month())
-				record_end_month = int(dateTime.Month())+2
+				record_end_month = int(dateTime.Month()) + 2
 				year = dateTime.Year()
 			} else {
 				fmt.Printf("unknown date format %s with error %s\n", strings.TrimSpace(row[recordStartMonthIdx]), err)
@@ -155,9 +153,9 @@ VALUES (?, ?, ?, ?, ?, ?)
 		if geolocationIdx != -1 {
 			geolocation = strings.TrimSpace(row[geolocationIdx])
 		}
-		
+
 		if condoApartmentPriceValueIdx != -1 {
-			value, err := strconv.ParseFloat(row[condoApartmentPriceValueIdx],32)
+			value, err := strconv.ParseFloat(row[condoApartmentPriceValueIdx], 32)
 			if err != nil {
 				fmt.Printf("cannot convert condo apartment price value %s to integer with error %s\n", row[condoApartmentPriceValueIdx], err)
 				continue
@@ -170,8 +168,8 @@ VALUES (?, ?, ?, ?, ?, ?)
 
 		// Execute the prepared statement with the row data
 		if _, err = stmt.Exec(
-			record_period, 
-			record_start_month, 
+			record_period,
+			record_start_month,
 			record_end_month,
 			year,
 			geolocation,
@@ -182,9 +180,9 @@ VALUES (?, ?, ?, ?, ?, ?)
 
 	// Delete the CSV file after use
 	e := os.Remove(filename)
-    if e != nil {
-        return fmt.Errorf("failed to delete CSV file: %v", err)
-    }
+	if e != nil {
+		return fmt.Errorf("failed to delete CSV file: %v", err)
+	}
 
 	fmt.Printf("%d condo apartment price imported.\n", year)
 
