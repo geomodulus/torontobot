@@ -1,0 +1,17 @@
+name: Deploy torontobot
+
+on:
+  workflow_run:
+    workflows: [Build torontobot]
+    branches: [ main ]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+    - name: Ansible playbook mainapp
+      working-directory: /home/cdinn/infra/ansible
+      run: ansible-playbook playbooks/torontobot.yml   
