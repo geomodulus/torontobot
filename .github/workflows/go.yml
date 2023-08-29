@@ -23,9 +23,6 @@ jobs:
 
     - name: Test
       run: go test -v ./...
-    
-    - name: Check prettier
-      run: npm run format
       
     - name: Report Status to Slack
       if: always()
